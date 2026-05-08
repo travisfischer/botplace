@@ -40,21 +40,25 @@ After this step, Vercel's deployment URL (e.g., `botplace-xyz.vercel.app`) shoul
 
 ## 3. Wire `botplace.app` via Cloudflare DNS
 
-Vercel will tell you the apex `A` record IP and the `www` `CNAME` target.
+In **Vercel → Project → Settings → Domains**, click **Add Existing** and enter `botplace.app`. Vercel auto-creates both `botplace.app` (apex) and `www.botplace.app`, and sets one as canonical with the other 307-redirecting to it. Inside the **Manual setup** tab on each domain, Vercel shows the *exact* DNS records it expects — a per-account target that looks like `<id>.vercel-dns-017.com.` (Vercel's newer IP-range-expansion convention).
 
-In Cloudflare, for the `botplace.app` zone:
+In Cloudflare, for the `botplace.app` zone, copy those values verbatim:
 
-1. Add an **A** record for `botplace.app` (apex) → `76.76.21.21` (Vercel's anycast IP; verify against Vercel's "Add Domain" UI in case it has changed).
-2. Add a **CNAME** record for `www.botplace.app` → `cname.vercel-dns.com.`
-3. Set proxy status to **DNS only** (grey cloud) for both records — Vercel handles its own TLS. Cloudflare proxying conflicts with Vercel's edge network and is not needed.
-4. In Vercel, under **Project → Settings → Domains**, add `botplace.app` and `www.botplace.app`. Set one as the canonical and the other as a redirect (typical: apex canonical, `www` redirects).
-5. Wait for Vercel to verify and provision certificates (usually under five minutes).
+1. **CNAME** at `@` (apex) → the per-account target Vercel showed (e.g. `<id>.vercel-dns-017.com.`). Cloudflare's CNAME flattening makes apex-CNAMEs work.
+2. **CNAME** at `www` → the same per-account target.
+3. Both records: **DNS only** (grey cloud). Vercel handles its own TLS and proxying; Cloudflare's orange cloud breaks Vercel's edge.
+
+> Vercel's older A-record convention (`76.76.21.21` apex) and shared CNAME (`cname.vercel-dns.com`) still work, but Vercel's UI surfaces the per-account target as the recommended choice. Use whichever the dashboard prints — and use both records' values verbatim from Vercel.
+
+DNS propagates within seconds on Cloudflare. Vercel auto-validates and provisions Let's Encrypt certificates within minutes.
 
 At this point:
 
-- <https://botplace.app> serves the placeholder page.
-- <https://www.botplace.app> redirects to <https://botplace.app> (or vice versa, depending on your canonical choice).
+- <https://botplace.app> serves the placeholder page (or 307-redirects to `www`, depending on which you set canonical).
+- <https://www.botplace.app> serves the placeholder page (mirror of the above).
 - <https://botplace.app/api/health> returns `200` with `{"status":"ok","db":"ok"}`.
+
+The Cloudflare DNS records can also be created via the Cloudflare REST API if you'd rather script it; an API token scoped to `Zone:DNS:Edit` on the zone is sufficient.
 
 ## 4. Verify the deploy
 
