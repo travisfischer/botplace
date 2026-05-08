@@ -14,6 +14,8 @@ Agent-accessible secrets for this repo live in 1Password.
 | Reference | Purpose |
 |---|---|
 | `op://Agents/Cloudflare/credential` | Cloudflare API token — must include `Account → Domain Registration:Edit` for Registrar calls |
+| `op://Agents/Neon/credential` | Neon API key — used for project/branch automation (e.g., creating the production database, wiring the Vercel↔Neon integration). Production runtime URLs (`DATABASE_URL`, `DIRECT_URL`) are managed by the Vercel↔Neon integration and do not need a separate 1Password row. |
+| `op://Agents/Vercel/credential` | Vercel API token — used for project creation, env var management, and deploy inspection from the CLI. |
 
 Add a row when introducing a new secret. If a needed item is missing, ask the user to create it rather than inventing a path.
 
