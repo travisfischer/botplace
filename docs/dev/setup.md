@@ -48,13 +48,13 @@ For local dev, set the same values in both files. Minimum:
 
 ```
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
-DIRECT_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
+DATABASE_URL_UNPOOLED="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 ```
 
 - `DATABASE_URL` — runtime connection used by `lib/prisma.ts` via the `@prisma/adapter-pg` adapter. Use Neon's pooled URL (host ends with `-pooler`) in production. For local dev, the unpooled URL is fine.
-- `DIRECT_URL` — used by `prisma.config.ts` for migrations. Always the unpooled URL. For local dev you can set both vars to the same string.
+- `DATABASE_URL_UNPOOLED` — used by `prisma.config.ts` for migrations. Always the unpooled URL. The name matches what the Vercel↔Neon integration injects; `prisma.config.ts` also accepts a legacy `DIRECT_URL` for parity with older tooling.
 
-Both files are gitignored. Do not commit secrets.
+For local dev you can set both vars to the same connection string. Both files are gitignored. Do not commit secrets.
 
 ## Run the dev server
 

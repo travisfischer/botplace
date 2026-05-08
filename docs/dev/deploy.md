@@ -22,15 +22,21 @@ How to take the local skeleton from "runs on my machine" to "running at <https:/
 ## 2. Provision Neon and wire the Vercel↔Neon integration
 
 1. In the Vercel project, open **Storage → Marketplace → Neon** and add a new Neon database.
-2. Choose a region close to your primary user base (US-East is a sensible default).
-3. Accept the integration's defaults. It will:
-   - Create a Neon project for Botplace.
-   - Create a `production` branch.
-   - Inject `DATABASE_URL` (pooled) and `DIRECT_URL` (unpooled) into the Vercel project's env vars.
-4. **Enable per-PR Neon branches**: in the Neon dashboard, open the Vercel integration settings and turn on "Create a new branch for each preview deployment." Confirm that preview deployments will also receive scoped `DATABASE_URL` / `DIRECT_URL` values.
-5. Trigger a new deploy from Vercel (push an empty commit or use **Redeploy**). The build should now succeed: `prisma migrate deploy` runs against the Neon production branch and applies the empty init migration, then `next build` produces the app.
+2. Choose a region close to your primary user base (US-East / `pdx1` are sensible defaults).
+3. Accept the integration's defaults to create the Neon project + a production branch.
+4. **Configure deployment branching for the project connection** — labelled differently than older docs imply:
+   - In Vercel, open **Storage → `<your Neon database>` → Projects** (left sidebar).
+   - On the connected `botplace` row, click the kebab `⋯` → **Update Project Connection**.
+   - In the **Configure botplace** modal, ensure:
+     - **Environments**: Production, Preview.
+     - **Require Active Resource Before Deploy**: on (so previews wait for the Neon branch to be ready).
+     - **Create Database Branch For Deployment**: both **Preview** and **Production** checked. The Preview checkbox is the per-PR-branches toggle.
+     - **Custom Environment Variable Prefix**: leave empty so the canonical `DATABASE_URL` / `DATABASE_URL_UNPOOLED` names are injected.
+   - Click **Save Changes**.
+5. The integration injects (no prefix): `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` (unpooled / used for migrations), plus assorted `POSTGRES_*` and `PG*` aliases for tools that expect them. With Preview branching on, these vars are injected per-deployment for each PR, scoped to a freshly-created Neon branch.
+6. Trigger a new deploy (push an empty commit or use **Redeploy**). The build should succeed: `prisma migrate deploy` runs against the appropriate Neon branch via `DATABASE_URL_UNPOOLED`, applies any pending migrations, then `next build` produces the app.
 
-After this step, Vercel's deployment URL (e.g., `botplace-xyz.vercel.app`) should serve the Botplace placeholder page, and `/api/health` should return `{"status":"ok","db":"ok"}`.
+After this step, Vercel's deployment URL (e.g., `botplace-xyz.vercel.app`) should serve the Botplace placeholder page, and `/api/health` should return `{"status":"ok","db":"ok"}`. PR preview deploys should do the same against a per-PR Neon branch — check the build logs to confirm the injected `DATABASE_URL` hostname differs from production.
 
 ## 3. Wire `botplace.app` via Cloudflare DNS
 
