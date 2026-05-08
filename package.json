@@ -13,8 +13,11 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "env:check": "scripts/env/check-env.sh",
+    "db:bootstrap": "scripts/db/bootstrap.sh",
+    "db:check": "scripts/db/check-db.sh",
     "db:generate": "prisma generate",
-    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:dev": "scripts/db/migrate-dev-safe.sh",
     "db:migrate:deploy": "prisma migrate deploy",
     "postinstall": "prisma generate"
   },
