@@ -114,6 +114,7 @@ If you'd rather not use Neon — for example, offline work — you can run Postg
 | `pnpm env:check` | Report required env-var presence by name; exits non-zero if any required input is missing |
 | `pnpm db:bootstrap` | Create or reuse a Neon dev branch off `dev-main`, write `.env`, run migrations |
 | `pnpm db:check` | Standalone DB connectivity health check (no Next.js dev server required) |
+| `pnpm db:branch:cleanup` | Delete disposable `dev-<random>` Neon branches (protects `main`, `dev-main`, and the branch in your current `.env`). `--dry-run` to preview, `--yes` to skip the prompt |
 | `pnpm db:generate` | Regenerate the Prisma client |
 | `pnpm db:migrate:dev` | Create + apply a new migration in dev (refuses to run on `dev-main` or production) |
 | `pnpm db:migrate:deploy` | Apply pending migrations (used in CI/Vercel) |

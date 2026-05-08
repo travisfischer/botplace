@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "env:check": "scripts/env/check-env.sh",
     "db:bootstrap": "scripts/db/bootstrap.sh",
+    "db:branch:cleanup": "scripts/db/branch-cleanup.sh",
     "db:check": "scripts/db/check-db.sh",
     "db:generate": "prisma generate",
     "db:migrate:dev": "scripts/db/migrate-dev-safe.sh",
