@@ -6,19 +6,21 @@ status: adopted
 
 # Brainstorm: MVP Scope and Hosting
 
-## Status (as of 2026-05-08)
+## Status (as of 2026-05-09)
 
-The recommendations in this brainstorm were adopted and converted into requirements. Execution is underway — Milestone 0 plus the agent-dev infra contract have shipped; Milestones 1–5 are still pending.
+The recommendations in this brainstorm were adopted and converted into requirements. Execution is well underway — Milestones 0 and 1 (plus M1 polish) are shipped; M2–M5 still pending.
 
 **Shipped:**
 
 - **Milestone 0 — Project Skeleton and Hosting** → [requirement](../requirements/requirement-20260507-0805-milestone-0-skeleton-and-hosting.md). Live at <https://botplace.app>. Stack landed exactly as Approach A recommended: Next.js 16 + React 19 + TypeScript on Vercel, Neon Postgres via the Vercel↔Neon integration with per-PR branches, Cloudflare DNS, Prisma 7 for migrations, pnpm 11.
 - **Cloud-agent Neon dev-branch workflow** → [requirement](../requirements/requirement-20260508-0851-cloud-agent-neon-dev-branches.md). Hosted Neon dev branches as the default agent dev path; not anticipated in this brainstorm but slotted in before Milestone 1.
 - **Env and secrets contract** → [requirement](../requirements/requirement-20260508-0900-env-and-secrets-mvp.md). Single canonical `.env`, Vercel as deploy source-of-truth, process env as the script interface, 1Password for human access.
+- **Milestone 1 — Bot Registration, Pixel API, and Event Log** → [requirement](../requirements/requirement-20260508-1121-milestone-1-bot-registration-and-pixel-api.md). Auth.js v5 + Google OAuth, HMAC-SHA-256 + pepper credentials, lazy-allocated chunked canvas state, append-only `PixelEvent` log, Upstash token-bucket rate limiting (with in-process memory dev fallback), structured JSON logs, atomic key rotation, admin-revoke endpoint. End-to-end verified in prod.
+- **M1 Polish — defense-in-depth, tests, CI, operator artifacts** → [requirement](../requirements/requirement-20260508-1900-m1-polish-and-defense-in-depth.md). Tagged auth resolvers, full credential-lifecycle audit trail, pixel-write-tx + auth-invariants tests, GitHub Actions CI, owner-mutation rate limits, `pnpm bot:*` / `pnpm pat:*` shell wrappers, admin doc, probe markdowns, `pnpm events:export`.
 
-**Pending (Milestones 1–5):** none of these have requirements docs yet. Bot registration + pixel API + event log (M1), public viewer (M2), bot DX (M3), ops hardening (M4), realtime decision (M5).
+**Pending (Milestones 2–5):** no requirements docs yet. Public viewer (M2), bot DX (M3), ops hardening (M4), realtime decision (M5).
 
-**Open questions resolved 2026-05-08** (see Resolved Decisions section below): Redis provider, palette selection method, bot registration identity, write semantics, and starter-bot format are all decided. Exact 8-color palette values are still deferred to the M1 spec — that is the only intentional remaining defer.
+**Open questions resolved 2026-05-08** (see Resolved Decisions section below): Redis provider, palette selection method, bot registration identity, write semantics, and starter-bot format are all decided. The starter palette landed as DawnBringer's 8-color set in M1, with the registry slot for future tier rollouts captured but unbuilt.
 
 ## Problem / Opportunity
 

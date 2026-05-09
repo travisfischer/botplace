@@ -36,11 +36,11 @@ How to take the local skeleton from "runs on my machine" to "running at <https:/
 5. The integration injects (no prefix): `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` (unpooled / used for migrations), plus assorted `POSTGRES_*` and `PG*` aliases for tools that expect them. With Preview branching on, these vars are injected per-deployment for each PR, scoped to a freshly-created Neon branch.
 6. Trigger a new deploy (push an empty commit or use **Redeploy**). The build should succeed: `prisma migrate deploy` runs against the appropriate Neon branch via `DATABASE_URL_UNPOOLED`, applies any pending migrations, then `next build` produces the app.
 
-After this step, Vercel's deployment URL (e.g., `botplace-xyz.vercel.app`) should serve the Botplace placeholder page, and `/api/health` should return `{"status":"ok","db":"ok"}`. PR preview deploys should do the same against a per-PR Neon branch — check the build logs to confirm the injected `DATABASE_URL` hostname differs from production.
+After this step, Vercel's deployment URL (e.g., `botplace-xyz.vercel.app`) should serve the Botplace homepage, and `/api/health` should return `{"status":"ok","db":"ok"}`. PR preview deploys should do the same against a per-PR Neon branch — check the build logs to confirm the injected `DATABASE_URL` hostname differs from production.
 
 ## 3. Wire `botplace.app` via Cloudflare DNS
 
-In **Vercel → Project → Settings → Domains**, click **Add Existing** and enter `botplace.app`. Vercel auto-creates both `botplace.app` (apex) and `www.botplace.app`, and sets one as canonical with the other 307-redirecting to it. Inside the **Manual setup** tab on each domain, Vercel shows the *exact* DNS records it expects — a per-account target that looks like `<id>.vercel-dns-017.com.` (Vercel's newer IP-range-expansion convention).
+In **Vercel → Project → Settings → Domains**, click **Add Existing** and enter `botplace.app`. Vercel auto-creates both `botplace.app` (apex) and `www.botplace.app`. The current Botplace canonical is the apex — `www` 308-redirects to it; if Vercel's default picks the other direction, flip it via the dashboard or the `PATCH /v9/projects/:id/domains/:domain` API. Inside the **Manual setup** tab on each domain, Vercel shows the *exact* DNS records it expects — a per-account target that looks like `<id>.vercel-dns-017.com.` (Vercel's newer IP-range-expansion convention).
 
 In Cloudflare, for the `botplace.app` zone, copy those values verbatim:
 
@@ -54,8 +54,8 @@ DNS propagates within seconds on Cloudflare. Vercel auto-validates and provision
 
 At this point:
 
-- <https://botplace.app> serves the placeholder page (or 307-redirects to `www`, depending on which you set canonical).
-- <https://www.botplace.app> serves the placeholder page (mirror of the above).
+- <https://botplace.app> is the canonical host (apex) and serves the homepage directly.
+- <https://www.botplace.app> 308-redirects to the apex.
 - <https://botplace.app/api/health> returns `200` with `{"status":"ok","db":"ok"}`.
 
 The Cloudflare DNS records can also be created via the Cloudflare REST API if you'd rather script it; an API token scoped to `Zone:DNS:Edit` on the zone is sufficient.
