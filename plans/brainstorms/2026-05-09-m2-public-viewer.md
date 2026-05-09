@@ -1,14 +1,14 @@
 ---
 date: 2026-05-09
 topic: m2-public-viewer
-status: in-progress
+status: adopted
 ---
 
 # Brainstorm: M2 — Public Canvas Viewer
 
-## Status (as of 2026-05-09, post-Q&A)
+## Status (as of 2026-05-09, adopted)
 
-In-progress. The first draft of this brainstorm was written 2026-05-09 morning; Travis answered the open questions and clarifying questions in the afternoon. This revision folds his answers in, splits decisions into **Resolved** vs **Still Open**, and reshapes the architecture around two new constraints he locked:
+**Adopted.** The first draft of this brainstorm was written 2026-05-09 morning; Travis answered the open questions and clarifying questions in the afternoon; this revision folded his answers in. On the second pass Travis confirmed the recommended defaults for the four "Still Open" items, locking the entire decision surface. The architecture now rests on two constraints he locked:
 
 1. **End-to-end ~1-second update tick.** "Pixels show up roughly 1 second after they were written, anywhere on the canvas." This is now a hard target, not a default.
 2. **Mobile parity.** The mobile read view is a first-class experience, not a "include touch" afterthought. Cross-device polish is part of the M2 bar.
@@ -87,9 +87,9 @@ These are locked. The requirement doc carries them forward verbatim.
 - **O — OG / social preview images.** Defer.
 - **P — Sector size.** Stay at 1000×1000. Don't downsize to 256² for testing — the schema and chunking are already there, M1 is in production with a 1000² sector, and the constraint forces real engineering rather than fake.
 
-## Still Open
+## Decisions That Needed Discussion (Resolved 2026-05-09)
 
-Four items remain. Each has a recommendation; the requirement doc adopts the recommendation by default unless Travis flips it during requirement review.
+Four items where the first-pass answer was "recommendation pending"; Travis confirmed the recommended default for all four on the second pass. The requirement doc carries them as **Implementation Decisions IM-1 through IM-4** (no longer "still open"). They're written out here in detail so the recommendation context is preserved alongside the lock.
 
 ### 1. Manifest concept — what is it, and what does "unwritten" mean?
 
@@ -123,6 +123,10 @@ The two manifest formats:
 
 **Recommendation: Option A (omit unwritten).** Smaller payload (especially while the canvas is sparse), and a non-breaking change later if we need uniformity. Both options are equivalent in correctness; Option A wins on bytes-per-tick, which matters for the 1s-tick target.
 
+**Decision: adopted.** Carried as IM-1 in the requirement doc.
+
+Decision: Option A
+
 ### 2. Anti-abuse defaults — which Vercel + Cloudflare features are actually on?
 
 Travis asked: "between Cloudflare … and Vercel, are there sane anti-abuse defaults we can turn on?"
@@ -146,6 +150,10 @@ If Vercel's free-tier firewall rules don't have IP-based rate limiting (this var
 
 **Decision needed in implementation:** the requirement doc should call out "verify Vercel Firewall free-tier rate-limit rule capability before merging; if absent, add belt-and-suspenders in-app limit at 60/sec/IP."
 
+**Decision: adopted.** Carried as V5 in the requirement doc.
+
+Decision: Agree with recommendation.
+
 ### 3. CDN cache durations under the 1s-tick target
 
 The original draft proposed `s-maxage=2` on manifest and chunk endpoints. With the 1s-tick target locked, that's too loose: a viewer could see a 2-second-old manifest, then poll 1 second later, and only see the new state ~3 seconds after the write. End-to-end budget would blow past 2s.
@@ -161,6 +169,10 @@ The original draft proposed `s-maxage=2` on manifest and chunk endpoints. With t
 End-to-end budget under this config: write commits at T=0, manifest CDN can be up to 1s stale (viewer sees up to T=1), client polls at T=1 (worst case +1s offset = T=2), chunk fetch happens immediately. **Worst-case ~2s**, typical ~1.2s. Inside the 2s target.
 
 Recommended *probe* in the requirement: spin up a local test bot that writes one pixel per second for 60 seconds, run a viewer in a second tab, and visually verify pixels show up within 2s consistently. If they don't, drop `s-maxage` to 0 on the manifest (origin-only) and retest.
+
+**Decision: adopted.** Carried as IM-2 in the requirement doc.
+
+Decision: Accept recommendation
 
 ### 4. Vercel runtime — Node vs Edge for public endpoints
 
@@ -179,6 +191,8 @@ Travis asked: "Can we reasonably design the system to serve this polling at a 1-
 - If the probe in §3 shows we're missing the 2s budget *because origin is slow* (not because cache invalidation is slow), revisit Edge then. Don't pre-build it.
 
 **Implementation flag:** the requirement doc should include "verify origin response time for `/public/sectors/:id/manifest` is < 100ms p95 under realistic viewer load. If not, escalate to Edge runtime + Neon serverless driver as a follow-up before declaring M2 done."
+
+**Decision: adopted.** Carried as IM-3 in the requirement doc.
 
 ## Approaches Considered
 
@@ -334,9 +348,8 @@ Travis flagged "M2.5: demo bots" as an explicit interstitial. Out of scope for t
 
 ## Next Steps
 
-1. **Travis reviews this brainstorm rev** — confirm Resolved decisions still match what he said, flip any defaults in §Still Open if recommendations don't sit right.
-2. **Open the M2 requirement doc.** Drafted alongside this revision at [`plans/requirements/requirement-20260509-1711-milestone-2-public-viewer.md`](../requirements/requirement-20260509-1711-milestone-2-public-viewer.md).
-3. **Implement against the requirement.** ~5.5–6 days focused work.
-4. **Production verify.** Bot writes pixel → viewer shows it within 2s on desktop and mobile. Share the URL.
-5. **Mark this brainstorm `adopted`** and the MVP-brainstorm M2 entry as shipped.
-6. **Spin up M2.5 demo bots** before any public announcement.
+1. **Merge the planning PR** ([#10](https://github.com/travisfischer/botplace/pull/10)) so the requirement doc lands on `main` and the implementation branch can reference it cleanly.
+2. **Implement against the requirement** at [`plans/requirements/requirement-20260509-1711-milestone-2-public-viewer.md`](../requirements/requirement-20260509-1711-milestone-2-public-viewer.md). ~5.5–6 days focused work across V1–V7.
+3. **Production verify.** Bot writes pixel → viewer shows it within 2s on desktop and mobile. Share the URL.
+4. **Update the MVP-brainstorm M2 entry to shipped** once production verification passes.
+5. **Spin up M2.5 demo bots** before any public announcement, so first visitors don't see a blank canvas.
