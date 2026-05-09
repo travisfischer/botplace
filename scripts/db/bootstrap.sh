@@ -137,6 +137,38 @@ UNPOOLED_URI=$(fetch_uri false)
 [ -n "$POOLED_URI" ]   || fail "Neon API did not return a pooled connection URI."
 [ -n "$UNPOOLED_URI" ] || fail "Neon API did not return an unpooled connection URI."
 
+# Resolve disposable per-branch dev secrets. Preserve any existing value so
+# previously-minted dev keys / sessions stay valid across bootstrap re-runs;
+# otherwise generate a fresh 32-byte hex secret. Production secrets live in
+# Vercel project env + 1Password and are never written to disk locally.
+read_env_value() {
+  local var_name="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  grep -E "^${var_name}=" "$ENV_FILE" 2>/dev/null \
+    | tail -1 \
+    | sed -E "s/^${var_name}=//; s/^\"(.*)\"\$/\\1/; s/^'(.*)'\$/\\1/" \
+    || true
+}
+generate_secret() {
+  openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p | tr -d '\n'
+}
+
+DEV_PEPPER=$(read_env_value BOTPLACE_API_KEY_PEPPER)
+if [ -z "$DEV_PEPPER" ]; then
+  DEV_PEPPER=$(generate_secret)
+  log "generated fresh dev pepper for $TARGET_BRANCH"
+else
+  log "preserving existing dev pepper from $ENV_FILE"
+fi
+
+DEV_AUTH_SECRET=$(read_env_value AUTH_SECRET)
+if [ -z "$DEV_AUTH_SECRET" ]; then
+  DEV_AUTH_SECRET=$(generate_secret)
+  log "generated fresh AUTH_SECRET for $TARGET_BRANCH"
+else
+  log "preserving existing AUTH_SECRET from $ENV_FILE"
+fi
+
 # Write .env atomically (allow-list only — no NEON_API_KEY etc.)
 log "writing $ENV_FILE..."
 TMP=$(mktemp)
@@ -148,6 +180,8 @@ cat > "$TMP" <<EOF
 DATABASE_URL="$POOLED_URI"
 DATABASE_URL_UNPOOLED="$UNPOOLED_URI"
 NEON_BRANCH_NAME="$TARGET_BRANCH"
+BOTPLACE_API_KEY_PEPPER="$DEV_PEPPER"
+AUTH_SECRET="$DEV_AUTH_SECRET"
 EOF
 mv "$TMP" "$ENV_FILE"
 chmod 600 "$ENV_FILE"
