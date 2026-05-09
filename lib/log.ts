@@ -12,7 +12,12 @@ export type AuthFailureReason =
   | "missing_header"
   | "malformed_header"
   | "unknown_key"
-  | "revoked_key";
+  | "revoked_key"
+  | "revoked_bot"
+  | "wrong_credential_type"
+  | "server_misconfigured";
+
+export type AuthType = "session" | "pat" | "bot_key" | "admin_token";
 
 export interface LogFields {
   request_id?: string;
@@ -20,10 +25,17 @@ export interface LogFields {
   status?: number;
   error_slug?: string;
   auth_failure_reason?: AuthFailureReason;
+  /**
+   * Which credential class authenticated the request, when one did. Lets
+   * operators attribute traffic to humans (`session`), agent-as-owner
+   * (`pat`), bots (`bot_key`), or admin tooling (`admin_token`) without
+   * inferring from path or body shape.
+   */
+  auth_type?: AuthType;
   bot_id?: string;
   owner_id?: string;
   sector_id?: string;
-  rate_limit_scope?: "bot" | "ip" | "read";
+  rate_limit_scope?: "bot" | "ip" | "read" | "owner_write";
   latency_ms?: number;
   /** BigInt serialized as string — JSON.stringify can't encode BigInt directly. */
   chunk_version_after?: string;

@@ -11,15 +11,24 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; keyId: string }> },
 ) {
   const { id: botId, keyId } = await params;
-  const ctx = newRouteContext(`/api/v1/bots/${botId}/keys/${keyId}`);
+  const ctx = newRouteContext(`/api/v1/bots/${botId}/keys/${keyId}`, request);
 
   const owner = await resolveOwner(request, ctx);
   if ("response" in owner) return owner.response;
 
-  const result = await revokeBotApiKey({ keyId, botId, ownerId: owner.ownerId });
+  const result = await revokeBotApiKey({
+    keyId,
+    botId,
+    ownerId: owner.ownerId,
+    auditContext: {
+      requestId: ctx.requestId,
+      sourceIp: ctx.sourceIp,
+      actor: owner.ownerId,
+    },
+  });
   if (!result.revoked) {
     return jsonError(ctx, 404, "key_not_found", {
-      extra: { owner_id: owner.ownerId, bot_id: botId },
+      extra: { ...owner.logFields, bot_id: botId },
     });
   }
   // 204 = no body, so we can't include `request_id` in the response. Log
@@ -28,7 +37,7 @@ export async function DELETE(
     request_id: ctx.requestId,
     path: ctx.path,
     status: 204,
-    owner_id: owner.ownerId,
+    ...owner.logFields,
     bot_id: botId,
     latency_ms: Date.now() - ctx.startedAt,
   });

@@ -7,6 +7,19 @@ import { mintKey } from "@/src/auth/api-keys";
 
 export type BotStatus = "ACTIVE" | "REVOKED";
 
+/**
+ * Audit-trail context plumbed in from the HTTP layer. When present, every
+ * credential lifecycle event (mint, rotate, revoke) writes an
+ * `AdminAuditEvent` row inside the same transaction as the mutation, so
+ * the audit trail can never drift from reality.
+ */
+export interface AuditContext {
+  requestId: string;
+  sourceIp: string;
+  /** Who took the action — owner id when present, "admin_token" for the admin route. */
+  actor?: string;
+}
+
 export interface BotApiKeySummary {
   id: string;
   prefix: string;
@@ -43,6 +56,7 @@ export async function createBotForOwner(input: {
   ownerId: string;
   name: string;
   pepper: string;
+  auditContext?: AuditContext;
 }): Promise<CreateBotResult> {
   return prisma.$transaction(async (tx) => {
     const bot = await tx.bot.create({
@@ -54,6 +68,23 @@ export async function createBotForOwner(input: {
       data: { botId: bot.id, keyHash: minted.hash, prefix: minted.prefix },
       select: { id: true, createdAt: true },
     });
+    if (input.auditContext) {
+      await tx.adminAuditEvent.create({
+        data: {
+          requestId: input.auditContext.requestId,
+          action: "create_bot_with_first_key",
+          targetId: bot.id,
+          payloadJson: {
+            owner_id: input.ownerId,
+            bot_id: bot.id,
+            api_key_id: key.id,
+            api_key_prefix: minted.prefix,
+            actor: input.auditContext.actor ?? null,
+          },
+          sourceIp: input.auditContext.sourceIp,
+        },
+      });
+    }
     return {
       id: bot.id,
       name: bot.name,
@@ -103,24 +134,44 @@ export async function mintBotApiKey(input: {
   botId: string;
   ownerId: string;
   pepper: string;
+  auditContext?: AuditContext;
 }): Promise<MintedBotApiKey | null> {
-  // Ownership check: only mint keys for bots this owner owns.
-  const bot = await prisma.bot.findFirst({
-    where: { id: input.botId, ownerId: input.ownerId },
-    select: { id: true },
+  return prisma.$transaction(async (tx) => {
+    // Ownership check: only mint keys for bots this owner owns.
+    const bot = await tx.bot.findFirst({
+      where: { id: input.botId, ownerId: input.ownerId },
+      select: { id: true },
+    });
+    if (!bot) return null;
+    const minted = mintKey("bp_live", input.pepper);
+    const key = await tx.botApiKey.create({
+      data: { botId: bot.id, keyHash: minted.hash, prefix: minted.prefix },
+      select: { id: true, createdAt: true },
+    });
+    if (input.auditContext) {
+      await tx.adminAuditEvent.create({
+        data: {
+          requestId: input.auditContext.requestId,
+          action: "mint_bot_key",
+          targetId: key.id,
+          payloadJson: {
+            owner_id: input.ownerId,
+            bot_id: bot.id,
+            api_key_id: key.id,
+            api_key_prefix: minted.prefix,
+            actor: input.auditContext.actor ?? null,
+          },
+          sourceIp: input.auditContext.sourceIp,
+        },
+      });
+    }
+    return {
+      id: key.id,
+      plaintext: minted.plaintext,
+      prefix: minted.prefix,
+      createdAt: key.createdAt,
+    };
   });
-  if (!bot) return null;
-  const minted = mintKey("bp_live", input.pepper);
-  const key = await prisma.botApiKey.create({
-    data: { botId: bot.id, keyHash: minted.hash, prefix: minted.prefix },
-    select: { id: true, createdAt: true },
-  });
-  return {
-    id: key.id,
-    plaintext: minted.plaintext,
-    prefix: minted.prefix,
-    createdAt: key.createdAt,
-  };
 }
 
 /**
@@ -132,17 +183,36 @@ export async function revokeBotApiKey(input: {
   keyId: string;
   botId: string;
   ownerId: string;
+  auditContext?: AuditContext;
 }): Promise<{ revoked: boolean }> {
-  const result = await prisma.botApiKey.updateMany({
-    where: {
-      id: input.keyId,
-      botId: input.botId,
-      revokedAt: null,
-      bot: { ownerId: input.ownerId },
-    },
-    data: { revokedAt: new Date() },
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.botApiKey.updateMany({
+      where: {
+        id: input.keyId,
+        botId: input.botId,
+        revokedAt: null,
+        bot: { ownerId: input.ownerId },
+      },
+      data: { revokedAt: new Date() },
+    });
+    if (result.count > 0 && input.auditContext) {
+      await tx.adminAuditEvent.create({
+        data: {
+          requestId: input.auditContext.requestId,
+          action: "revoke_bot_key_by_owner",
+          targetId: input.keyId,
+          payloadJson: {
+            owner_id: input.ownerId,
+            bot_id: input.botId,
+            api_key_id: input.keyId,
+            actor: input.auditContext.actor ?? null,
+          },
+          sourceIp: input.auditContext.sourceIp,
+        },
+      });
+    }
+    return { revoked: result.count > 0 };
   });
-  return { revoked: result.count > 0 };
 }
 
 // Snake-case JSON shapes. The wire contract for the M1 API is uniformly
@@ -202,6 +272,7 @@ export async function rotateBotApiKey(input: {
   oldKeyId: string;
   ownerId: string;
   pepper: string;
+  auditContext?: AuditContext;
 }): Promise<MintedBotApiKey | null> {
   return prisma.$transaction(async (tx) => {
     // Revoke first; if `count === 0` the old key isn't an active key on a
@@ -225,6 +296,24 @@ export async function rotateBotApiKey(input: {
       },
       select: { id: true, createdAt: true },
     });
+    if (input.auditContext) {
+      await tx.adminAuditEvent.create({
+        data: {
+          requestId: input.auditContext.requestId,
+          action: "rotate_bot_key",
+          targetId: key.id,
+          payloadJson: {
+            owner_id: input.ownerId,
+            bot_id: input.botId,
+            old_api_key_id: input.oldKeyId,
+            new_api_key_id: key.id,
+            new_api_key_prefix: minted.prefix,
+            actor: input.auditContext.actor ?? null,
+          },
+          sourceIp: input.auditContext.sourceIp,
+        },
+      });
+    }
     return {
       id: key.id,
       plaintext: minted.plaintext,

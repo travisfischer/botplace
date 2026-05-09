@@ -28,17 +28,19 @@ export async function GET(
   const { id: sectorId, chunk_x: cxStr, chunk_y: cyStr } = await params;
   const path = `/api/v1/sectors/${sectorId}/chunks/${cxStr}/${cyStr}`;
 
-  const a = await readAuth(request);
-  if (!a) {
+  const auth = await readAuth(request);
+  if (!auth.ok) {
     log("warn", {
       request_id: requestId,
       path,
       status: 401,
       error_slug: "unauthorized",
+      auth_failure_reason: auth.reason,
       latency_ms: Date.now() - startedAt,
     });
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
+  const a = auth.data;
 
   const rl = await checkReadRateLimit(a.callerKey);
   if (!rl.ok) {
@@ -48,6 +50,8 @@ export async function GET(
         path,
         status: 503,
         error_slug: "rate_limit_unavailable",
+        auth_type: a.authType,
+        owner_id: a.ownerId,
         dependency: "upstash",
         latency_ms: Date.now() - startedAt,
       });
@@ -62,6 +66,8 @@ export async function GET(
       status: 429,
       error_slug: "rate_limited",
       rate_limit_scope: "read",
+      auth_type: a.authType,
+      owner_id: a.ownerId,
       latency_ms: Date.now() - startedAt,
     });
     return Response.json(
@@ -82,6 +88,8 @@ export async function GET(
       path,
       status: 400,
       error_slug: "invalid_input",
+      auth_type: a.authType,
+      owner_id: a.ownerId,
       sector_id: sectorId,
       latency_ms: Date.now() - startedAt,
     });
@@ -101,6 +109,8 @@ export async function GET(
       path,
       status: 404,
       error_slug: "sector_not_found",
+      auth_type: a.authType,
+      owner_id: a.ownerId,
       sector_id: sectorId,
       latency_ms: Date.now() - startedAt,
     });
@@ -120,6 +130,8 @@ export async function GET(
       path,
       status: 400,
       error_slug: "out_of_bounds",
+      auth_type: a.authType,
+      owner_id: a.ownerId,
       sector_id: sectorId,
       latency_ms: Date.now() - startedAt,
     });

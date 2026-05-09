@@ -3,7 +3,9 @@
 // so an agent can hit the owner-management API without driving a browser.
 
 import { prisma } from "@/lib/prisma";
+import type { AuditContext } from "@/src/bots";
 import { hashKey, mintKey } from "./api-keys";
+import { authFail, authOk, type AuthResult } from "./result";
 
 export interface MintPersonalAccessTokenInput {
   ownerId: string;
@@ -11,6 +13,7 @@ export interface MintPersonalAccessTokenInput {
   name: string;
   /** `process.env.BOTPLACE_API_KEY_PEPPER`. Caller fetches once and threads it through. */
   pepper: string;
+  auditContext?: AuditContext;
 }
 
 export interface MintPersonalAccessTokenResult {
@@ -26,46 +29,71 @@ export interface MintPersonalAccessTokenResult {
 export async function mintPersonalAccessToken(
   input: MintPersonalAccessTokenInput,
 ): Promise<MintPersonalAccessTokenResult> {
-  const minted = mintKey("bp_pat", input.pepper);
-  const row = await prisma.ownerPersonalAccessToken.create({
-    data: {
-      ownerId: input.ownerId,
-      tokenHash: minted.hash,
+  return prisma.$transaction(async (tx) => {
+    const minted = mintKey("bp_pat", input.pepper);
+    const row = await tx.ownerPersonalAccessToken.create({
+      data: {
+        ownerId: input.ownerId,
+        tokenHash: minted.hash,
+        prefix: minted.prefix,
+        name: input.name,
+      },
+      select: { id: true, createdAt: true },
+    });
+    if (input.auditContext) {
+      await tx.adminAuditEvent.create({
+        data: {
+          requestId: input.auditContext.requestId,
+          action: "mint_pat",
+          targetId: row.id,
+          payloadJson: {
+            owner_id: input.ownerId,
+            pat_id: row.id,
+            pat_prefix: minted.prefix,
+            name: input.name,
+            actor: input.auditContext.actor ?? null,
+          },
+          sourceIp: input.auditContext.sourceIp,
+        },
+      });
+    }
+    return {
+      id: row.id,
+      plaintext: minted.plaintext,
       prefix: minted.prefix,
-      name: input.name,
-    },
-    select: { id: true, createdAt: true },
+      createdAt: row.createdAt,
+    };
   });
-  return {
-    id: row.id,
-    plaintext: minted.plaintext,
-    prefix: minted.prefix,
-    createdAt: row.createdAt,
-  };
 }
 
 /**
- * Resolve the owner id for a plaintext PAT, returning null on unknown,
- * revoked, or otherwise-invalid tokens. Constant 1-row DB lookup keyed on
- * the unique `tokenHash` index.
+ * Resolve the owner id for a plaintext PAT. Returns a tagged result so the
+ * caller can log the precise `auth_failure_reason` while still returning a
+ * byte-identical 401 body across all branches.
+ *
+ * Failure reasons:
+ *   - `wrong_credential_type` — non-`bp_pat_` prefix (caller sent something else)
+ *   - `unknown_key`           — hash not in the database
+ *   - `revoked_key`           — token was revoked
  */
 export async function ownerIdFromPersonalAccessToken(
   plaintext: string,
   pepper: string,
-): Promise<string | null> {
-  if (!plaintext.startsWith("bp_pat_")) return null;
+): Promise<AuthResult<string>> {
+  if (!plaintext.startsWith("bp_pat_")) return authFail("wrong_credential_type");
   const hash = hashKey(plaintext, pepper);
   const row = await prisma.ownerPersonalAccessToken.findUnique({
     where: { tokenHash: hash },
     select: { id: true, ownerId: true, revokedAt: true },
   });
-  if (!row || row.revokedAt) return null;
+  if (!row) return authFail("unknown_key");
+  if (row.revokedAt) return authFail("revoked_key");
   // Fire-and-forget: stamp `lastUsedAt`. Failures are swallowed — auth has
   // already succeeded and the freshness signal is advisory.
   void prisma.ownerPersonalAccessToken
     .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
     .catch(() => {});
-  return row.ownerId;
+  return authOk(row.ownerId);
 }
 
 export interface PersonalAccessTokenSummary {
@@ -99,16 +127,34 @@ export async function listPersonalAccessTokensForOwner(
 export async function revokePersonalAccessToken(input: {
   tokenId: string;
   ownerId: string;
+  auditContext?: AuditContext;
 }): Promise<{ revoked: boolean }> {
-  const result = await prisma.ownerPersonalAccessToken.updateMany({
-    where: {
-      id: input.tokenId,
-      ownerId: input.ownerId,
-      revokedAt: null,
-    },
-    data: { revokedAt: new Date() },
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.ownerPersonalAccessToken.updateMany({
+      where: {
+        id: input.tokenId,
+        ownerId: input.ownerId,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+    if (result.count > 0 && input.auditContext) {
+      await tx.adminAuditEvent.create({
+        data: {
+          requestId: input.auditContext.requestId,
+          action: "revoke_pat_by_owner",
+          targetId: input.tokenId,
+          payloadJson: {
+            owner_id: input.ownerId,
+            pat_id: input.tokenId,
+            actor: input.auditContext.actor ?? null,
+          },
+          sourceIp: input.auditContext.sourceIp,
+        },
+      });
+    }
+    return { revoked: result.count > 0 };
   });
-  return { revoked: result.count > 0 };
 }
 
 // Snake-case JSON shapes — same rationale as `src/bots/index.ts`.
