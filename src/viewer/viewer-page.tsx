@@ -1,12 +1,17 @@
-// Server component that renders the public viewer page. Fetches sector
-// metadata via the public HTTP endpoint (per IM-4) so SSR rides the same
-// CDN cache as client refreshes — no extra Prisma cold-start hit per
-// fresh visit.
+// Server component that renders the public viewer page. Calls the shared
+// `loadSectorMeta` helper directly instead of looping back through HTTP —
+// the previous shape used `headers().get('host')` as the URL authority of
+// an outbound fetch, which an attacker could redirect via the (untrusted)
+// Host header. Direct call removes the loopback and the SSRF surface
+// together.
+//
+// CDN cache for /api/v1/public/sectors/:id is unaffected — Vercel caches
+// the route handler's response, not this helper.
 
-import { headers } from "next/headers";
 import Link from "next/link";
 
 import { auth } from "@/auth";
+import { loadSectorMeta } from "@/src/sectors";
 
 import { SectorViewer, type SectorMeta } from "./sector-viewer";
 
@@ -14,23 +19,22 @@ interface ViewerPageProps {
   sectorId: string;
 }
 
-async function getSectorMeta(sectorId: string): Promise<SectorMeta | null> {
-  const h = await headers();
-  const host = h.get("host");
-  if (!host) return null;
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
-  const url = `${proto}://${host}/api/v1/public/sectors/${sectorId}`;
-  // 60s revalidate matches the endpoint's s-maxage; SSR shares the cache.
-  const res = await fetch(url, { next: { revalidate: 60 } });
-  if (!res.ok) return null;
-  return (await res.json()) as SectorMeta;
+async function getSectorMetaForViewer(
+  sectorId: string,
+): Promise<SectorMeta | null> {
+  const result = await loadSectorMeta(sectorId, {
+    path: `/sectors/${sectorId}`,
+  });
+  if (!result.ok) return null;
+  // The loader's shape is intentionally identical to the SectorMeta type
+  // the client component consumes — no remapping needed. Spreading
+  // protects against type drift if either side adds fields.
+  return { ...result.meta, palette: [...result.meta.palette] };
 }
 
 export async function ViewerPage({ sectorId }: ViewerPageProps) {
   const [meta, session] = await Promise.all([
-    getSectorMeta(sectorId),
+    getSectorMetaForViewer(sectorId),
     auth(),
   ]);
 
