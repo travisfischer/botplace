@@ -18,6 +18,16 @@ export default defineConfig({
       reporter: ["text", "html"],
       include: ["src/**/*.ts", "lib/**/*.ts", "app/**/*.ts"],
       exclude: ["**/*.test.ts", "generated/**", "tests/**"],
+      // Floors, not ceilings — raise as we add coverage. These match the
+      // current lower-bound set by the M1-polish T2 fixture; the load-
+      // bearing modules (`src/`, `lib/`) sit comfortably above. App-route
+      // coverage is paced by the `tests/api/*` fixtures growing.
+      thresholds: {
+        statements: 70,
+        branches: 60,
+        functions: 70,
+        lines: 70,
+      },
     },
   },
 });

@@ -31,6 +31,8 @@ model Owner {
 model OwnerPersonalAccessToken {
   id         String    @id @default(cuid())
   ownerId    String    @map("owner_id")
+  // Restrict: PATs carry audit lineage (last_used_at, revocation history)
+  // that we don't want vanishing on owner delete.
   owner      Owner     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   tokenHash  String    @unique @map("token_hash") // HMAC-SHA-256(token, BOTPLACE_API_KEY_PEPPER)
   prefix     String                               // "bp_pat_<8-char-prefix>" for log display
@@ -39,13 +41,17 @@ model OwnerPersonalAccessToken {
   revokedAt  DateTime? @map("revoked_at")
   lastUsedAt DateTime? @map("last_used_at")
 
-  @@index([ownerId])
+  // Hot read: list-PATs-for-owner. Compound with `revokedAt` so the
+  // active-only filter can be served from the index.
+  @@index([ownerId, revokedAt])
   @@map("owner_personal_access_tokens")
 }
 
 model Bot {
   id        String       @id @default(cuid())
   ownerId   String       @map("owner_id")
+  // Restrict: a bot's PixelEvent rows are append-only audit data; cascading
+  // a bot delete would silently truncate the canvas's write history.
   owner     Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   name      String
   status    BotStatus    @default(ACTIVE)
@@ -53,14 +59,17 @@ model Bot {
   apiKeys   BotApiKey[]
   events    PixelEvent[]
 
+  // The unique index serves the (ownerId)-prefix scan via leftmost-prefix
+  // matching; no separate `@@index([ownerId])` needed.
   @@unique([ownerId, name])
-  @@index([ownerId])
   @@map("bots")
 }
 
 model BotApiKey {
   id         String       @id @default(cuid())
   botId      String       @map("bot_id")
+  // Restrict: keys are referenced by PixelEvent for credential-level audit
+  // across rotations. Losing key rows would orphan the audit trail.
   bot        Bot          @relation(fields: [botId], references: [id], onDelete: Restrict)
   keyHash    String       @unique @map("key_hash") // HMAC-SHA-256(key, BOTPLACE_API_KEY_PEPPER) — uniqueness is a security invariant
   prefix     String                                // "bp_live_<8-char-prefix>" for log display
@@ -69,7 +78,9 @@ model BotApiKey {
   lastUsedAt DateTime?    @map("last_used_at")
   events     PixelEvent[]
 
-  @@index([botId])
+  // Hot read: active-keys-for-bot. Compound with `revokedAt` lets the
+  // common `WHERE bot_id = X AND revoked_at IS NULL` filter ride the index.
+  @@index([botId, revokedAt])
   @@map("bot_api_keys")
 }
 
@@ -99,6 +110,10 @@ model SectorChunk {
   @@map("sector_chunks")
 }
 
+// PixelEvent is the append-only event log: every accepted pixel write
+// produces exactly one row. Restrict on every FK because every parent
+// (sector, bot, key) is part of the audit lineage — losing any of them
+// would create undebuggable holes in the replay stream.
 model PixelEvent {
   id                BigInt    @id @default(autoincrement())
   requestId         String    @map("request_id")           // joins HTTP log + tx + event log

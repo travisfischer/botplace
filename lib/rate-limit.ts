@@ -62,8 +62,25 @@ const READ: BucketConfig = {
   refillIntervalString: "1 s",
   prefix: "botplace:rl:read",
 };
+// Per-owner cap on the credential-management mutations (create bot, mint
+// key, rotate, mint PAT). 30/min is generous for the human form path and
+// still bounds blast radius if a PAT is stolen — the attacker can't churn
+// thousands of bots before the legitimate owner notices.
+const OWNER_WRITE: BucketConfig = {
+  capacity: 30,
+  refillIntervalMs: 2_000,
+  refillIntervalString: "2 s",
+  prefix: "botplace:rl:owner_write",
+};
 
-let cached: { bot: Limiter; ip: Limiter; read: Limiter } | null = null;
+interface LimiterCache {
+  bot: Limiter;
+  ip: Limiter;
+  read: Limiter;
+  ownerWrite: Limiter;
+}
+
+let cached: LimiterCache | null = null;
 let warnedMemoryFallback = false;
 
 /**
@@ -86,6 +103,30 @@ export function coerceUpstashResult(raw: unknown): LimiterResult {
   };
 }
 
+/**
+ * Per-call Upstash timeout. "Fail-closed" only applies if the call returns
+ * — a hung connection that never resolves would block the request thread
+ * until Vercel's invocation timeout fires (multiple seconds). 2 seconds
+ * is well above p99 Upstash latency and well under the runtime's outer
+ * timeout, so a transient outage degrades to 503 quickly.
+ */
+const UPSTASH_TIMEOUT_MS = 2_000;
+
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("upstash_timeout")),
+      ms,
+    );
+  });
+  try {
+    return await Promise.race([p, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function adaptUpstashLimiter(redis: Redis, cfg: BucketConfig): Limiter {
   const r = new Ratelimit({
     redis,
@@ -94,12 +135,14 @@ function adaptUpstashLimiter(redis: Redis, cfg: BucketConfig): Limiter {
   });
   return {
     async limit(key: string): Promise<LimiterResult> {
-      return coerceUpstashResult(await r.limit(key));
+      return coerceUpstashResult(
+        await withTimeout(r.limit(key), UPSTASH_TIMEOUT_MS),
+      );
     },
   };
 }
 
-function getLimiters(): { bot: Limiter; ip: Limiter; read: Limiter } {
+function getLimiters(): LimiterCache {
   if (cached) return cached;
 
   // Either canonical Upstash names OR Vercel↔Upstash integration names.
@@ -114,6 +157,7 @@ function getLimiters(): { bot: Limiter; ip: Limiter; read: Limiter } {
       bot: adaptUpstashLimiter(redis, WRITE_BOT),
       ip: adaptUpstashLimiter(redis, WRITE_IP),
       read: adaptUpstashLimiter(redis, READ),
+      ownerWrite: adaptUpstashLimiter(redis, OWNER_WRITE),
     };
     return cached;
   }
@@ -136,6 +180,10 @@ function getLimiters(): { bot: Limiter; ip: Limiter; read: Limiter } {
     bot: new MemoryTokenBucket(WRITE_BOT.capacity, WRITE_BOT.refillIntervalMs),
     ip: new MemoryTokenBucket(WRITE_IP.capacity, WRITE_IP.refillIntervalMs),
     read: new MemoryTokenBucket(READ.capacity, READ.refillIntervalMs),
+    ownerWrite: new MemoryTokenBucket(
+      OWNER_WRITE.capacity,
+      OWNER_WRITE.refillIntervalMs,
+    ),
   };
   return cached;
 }
@@ -170,6 +218,17 @@ export type ReadRateLimitOutcome =
     }
   | { ok: false; reason: "rate_limit_unavailable" };
 
+export type OwnerWriteRateLimitOutcome =
+  | { ok: true; ownerWrite: BucketState }
+  | {
+      ok: false;
+      reason: "rate_limited";
+      scope: "owner_write";
+      ownerWrite: BucketState;
+      retryAfterSeconds: number;
+    }
+  | { ok: false; reason: "rate_limit_unavailable" };
+
 function retryAfter(reset: number): number {
   return Math.max(1, Math.ceil((reset - Date.now()) / 1000));
 }
@@ -182,7 +241,7 @@ export async function checkPixelWriteRateLimit(input: {
   botKey: string;
   ip: string;
 }): Promise<WriteRateLimitOutcome> {
-  let limiters: { bot: Limiter; ip: Limiter; read: Limiter };
+  let limiters: LimiterCache;
   try {
     limiters = getLimiters();
   } catch {
@@ -229,7 +288,7 @@ export async function checkPixelWriteRateLimit(input: {
 export async function checkReadRateLimit(
   callerKey: string,
 ): Promise<ReadRateLimitOutcome> {
-  let limiters: { bot: Limiter; ip: Limiter; read: Limiter };
+  let limiters: LimiterCache;
   try {
     limiters = getLimiters();
   } catch {
@@ -247,6 +306,38 @@ export async function checkReadRateLimit(
       };
     }
     return { ok: true, read: toState(result) };
+  } catch {
+    return { ok: false, reason: "rate_limit_unavailable" };
+  }
+}
+
+/**
+ * Per-owner rate limit on credential-management mutations (create bot,
+ * mint key, rotate, mint PAT, owner-driven revokes). Stops a stolen PAT
+ * from churning the owner's credential surface faster than a human ever
+ * would.
+ */
+export async function checkOwnerWriteRateLimit(
+  ownerId: string,
+): Promise<OwnerWriteRateLimitOutcome> {
+  let limiters: LimiterCache;
+  try {
+    limiters = getLimiters();
+  } catch {
+    return { ok: false, reason: "rate_limit_unavailable" };
+  }
+  try {
+    const result = await limiters.ownerWrite.limit(ownerId);
+    if (!result.success) {
+      return {
+        ok: false,
+        reason: "rate_limited",
+        scope: "owner_write",
+        ownerWrite: toState(result),
+        retryAfterSeconds: retryAfter(result.reset),
+      };
+    }
+    return { ok: true, ownerWrite: toState(result) };
   } catch {
     return { ok: false, reason: "rate_limit_unavailable" };
   }
@@ -275,6 +366,18 @@ export function readRateLimitHeaders(
   const headers: Record<string, string> = {
     "X-RateLimit-Remaining-Read": String(read.remaining),
     "X-RateLimit-Reset-Read": String(Math.floor(read.reset / 1000)),
+  };
+  if (retryAfter !== undefined) headers["Retry-After"] = String(retryAfter);
+  return headers;
+}
+
+export function ownerWriteRateLimitHeaders(
+  ownerWrite: BucketState,
+  retryAfter?: number,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-RateLimit-Remaining-Owner-Write": String(ownerWrite.remaining),
+    "X-RateLimit-Reset-Owner-Write": String(Math.floor(ownerWrite.reset / 1000)),
   };
   if (retryAfter !== undefined) headers["Retry-After"] = String(retryAfter);
   return headers;

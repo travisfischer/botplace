@@ -101,6 +101,10 @@ That creates (or reuses) a `dev-<random>` child branch off `dev-main`, writes `.
 
 If you'd rather not use Neon — for example, offline work — you can run Postgres locally (`brew install postgresql` or `docker run postgres`) and hand-author `.env`. Migrations and the app work against any Postgres 17+; Neon-specific features (branching, autoscale) are off the table on local Postgres.
 
+## Rate limiting in dev
+
+Production uses Upstash Redis for rate limiting. Local dev has **no Upstash dependency**: `lib/rate-limit.ts` falls back to an in-process memory bucket when no Upstash env (`UPSTASH_REDIS_REST_URL`/`KV_REST_API_URL` + token) is set and `NODE_ENV !== 'production'`. This is a deliberate dev-experience choice — the disposable per-Neon-branch dev story shouldn't require an extra service to run a local server. The fallback resets on every dev-server restart, so testing rate-limit behavior across processes still requires real Upstash creds in your env.
+
 ## Useful scripts
 
 | Command | Purpose |

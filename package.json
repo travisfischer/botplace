@@ -26,6 +26,15 @@
     "test:coverage": "vitest run --coverage",
     "test:api:replay": "vitest run tests/api/replay.test.ts",
     "admin:revoke-key": "scripts/admin/revoke-key.sh",
+    "bot:create": "scripts/bots/create.sh",
+    "bot:list": "scripts/bots/list.sh",
+    "bot:mint-key": "scripts/bots/mint-key.sh",
+    "bot:rotate-key": "scripts/bots/rotate-key.sh",
+    "bot:revoke-key": "scripts/bots/revoke-key.sh",
+    "pat:mint": "scripts/pat/mint.sh",
+    "pat:list": "scripts/pat/list.sh",
+    "pat:revoke": "scripts/pat/revoke.sh",
+    "events:export": "scripts/events/export.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {

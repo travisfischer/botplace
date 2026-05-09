@@ -8,17 +8,32 @@
 
 import { randomUUID } from "node:crypto";
 
-import { ownerIdFromRequest } from "@/src/auth/authenticate";
+import { ownerAuthFromRequest } from "@/src/auth/authenticate";
+import { clientIpFrom as httpClientIpFrom } from "./http";
 import { log, type LogFields, type LogLevel } from "./log";
+import {
+  checkOwnerWriteRateLimit,
+  ownerWriteRateLimitHeaders,
+} from "./rate-limit";
+
+// Re-export for callers that already imported it from here.
+export const clientIpFrom = httpClientIpFrom;
 
 export interface RouteContext {
   requestId: string;
   startedAt: number;
   path: string;
+  /** Best-effort client IP (X-Forwarded-For first hop, X-Real-IP fallback). */
+  sourceIp: string;
 }
 
-export function newRouteContext(path: string): RouteContext {
-  return { requestId: randomUUID(), startedAt: Date.now(), path };
+export function newRouteContext(path: string, request?: Request): RouteContext {
+  return {
+    requestId: randomUUID(),
+    startedAt: Date.now(),
+    path,
+    sourceIp: request ? httpClientIpFrom(request) : "unknown",
+  };
 }
 
 function emit(
@@ -70,18 +85,40 @@ export function jsonOk<T>(
   return Response.json(body, { status, headers: init.headers });
 }
 
+export interface ResolvedOwner {
+  ownerId: string;
+  authType: "session" | "pat";
+  /**
+   * Pre-shaped log fields for routes to spread into their log calls. Saves
+   * every call site from repeating `{ auth_type, owner_id }`.
+   */
+  logFields: Pick<LogFields, "auth_type" | "owner_id">;
+}
+
 /**
- * Resolve the owner id for an owner-management endpoint. Returns the id, or
- * a ready-to-return 401 response if auth failed. Centralizing here means
- * every owner route logs auth failures the same way.
+ * Resolve the owner id for an owner-management endpoint. Returns the id +
+ * auth type, or a ready-to-return 401 response (with `auth_failure_reason`
+ * already logged) if auth failed. Centralizing here means every owner
+ * route logs auth failures the same way.
  */
 export async function resolveOwner(
   request: Request,
   ctx: RouteContext,
-): Promise<{ ownerId: string } | { response: Response }> {
-  const ownerId = await ownerIdFromRequest(request);
-  if (!ownerId) return { response: unauthorized(ctx) };
-  return { ownerId };
+): Promise<ResolvedOwner | { response: Response }> {
+  const result = await ownerAuthFromRequest(request);
+  if (!result.ok) {
+    return {
+      response: unauthorized(ctx, { auth_failure_reason: result.reason }),
+    };
+  }
+  return {
+    ownerId: result.data.ownerId,
+    authType: result.data.authType,
+    logFields: {
+      auth_type: result.data.authType,
+      owner_id: result.data.ownerId,
+    },
+  };
 }
 
 /**
@@ -101,6 +138,56 @@ export function requirePepper(ctx: RouteContext):
     };
   }
   return { pepper };
+}
+
+/**
+ * Per-owner rate limit on credential-management mutations. Routes that
+ * mint or rotate credentials should call this immediately after
+ * `resolveOwner`. On success returns `{ headers }` to merge into the
+ * eventual success response. On rate-limit / unavailable, returns a
+ * ready-to-return response.
+ */
+export async function applyOwnerWriteRateLimit(
+  ctx: RouteContext,
+  owner: ResolvedOwner,
+): Promise<{ headers: Record<string, string> } | { response: Response }> {
+  const rl = await checkOwnerWriteRateLimit(owner.ownerId);
+  if (!rl.ok) {
+    if (rl.reason === "rate_limit_unavailable") {
+      return {
+        response: jsonError(ctx, 503, "rate_limit_unavailable", {
+          level: "error",
+          extra: { ...owner.logFields, dependency: "upstash" },
+        }),
+      };
+    }
+    log("warn", {
+      request_id: ctx.requestId,
+      path: ctx.path,
+      status: 429,
+      error_slug: "rate_limited",
+      rate_limit_scope: "owner_write",
+      ...owner.logFields,
+      latency_ms: Date.now() - ctx.startedAt,
+    });
+    return {
+      response: Response.json(
+        {
+          error: "rate_limited",
+          scope: rl.scope,
+          request_id: ctx.requestId,
+        },
+        {
+          status: 429,
+          headers: ownerWriteRateLimitHeaders(
+            rl.ownerWrite,
+            rl.retryAfterSeconds,
+          ),
+        },
+      ),
+    };
+  }
+  return { headers: ownerWriteRateLimitHeaders(rl.ownerWrite) };
 }
 
 /** Shape `{ name: string }` body, returning trimmed name or null. */

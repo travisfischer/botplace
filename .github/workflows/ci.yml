@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: typecheck + lint + test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # `postinstall` runs `prisma generate`, so the typecheck step below
+      # has the generated client available.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm db:validate
+
+      - run: pnpm typecheck
+
+      - run: pnpm lint
+
+      # Tests that require a live Postgres (replay) skip themselves when
+      # DATABASE_URL is unset; CI doesn't provision a DB.
+      - run: pnpm test

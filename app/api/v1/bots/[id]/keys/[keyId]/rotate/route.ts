@@ -3,6 +3,7 @@
 // Caller never observes a window where both keys are live or both revoked.
 
 import {
+  applyOwnerWriteRateLimit,
   jsonError,
   jsonOk,
   newRouteContext,
@@ -18,10 +19,14 @@ export async function POST(
   const { id: botId, keyId } = await params;
   const ctx = newRouteContext(
     `/api/v1/bots/${botId}/keys/${keyId}/rotate`,
+    request,
   );
 
   const owner = await resolveOwner(request, ctx);
   if ("response" in owner) return owner.response;
+
+  const rl = await applyOwnerWriteRateLimit(ctx, owner);
+  if ("response" in rl) return rl.response;
 
   const pepper = requirePepper(ctx);
   if ("response" in pepper) return pepper.response;
@@ -31,14 +36,20 @@ export async function POST(
     oldKeyId: keyId,
     ownerId: owner.ownerId,
     pepper: pepper.pepper,
+    auditContext: {
+      requestId: ctx.requestId,
+      sourceIp: ctx.sourceIp,
+      actor: owner.ownerId,
+    },
   });
   if (!result) {
     return jsonError(ctx, 404, "key_not_found", {
-      extra: { owner_id: owner.ownerId, bot_id: botId },
+      extra: { ...owner.logFields, bot_id: botId },
     });
   }
   return jsonOk(ctx, mintedBotApiKeyToJson(result), {
     status: 201,
-    extra: { owner_id: owner.ownerId, bot_id: botId },
+    extra: { ...owner.logFields, bot_id: botId },
+    headers: rl.headers,
   });
 }

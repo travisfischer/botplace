@@ -1,3 +1,10 @@
+// POST /api/v1/pixels — bot writes a single pixel.
+//
+// Auth: bot keys only (`bp_live_*`). Reject session-cookie auth and PAT
+// auth — the pixel-write API is bot-scoped, owner credentials don't
+// apply. The byte-identical 401 invariant is preserved across every auth
+// failure branch; the structured log differentiates via `auth_failure_reason`.
+
 import { randomUUID } from "node:crypto";
 
 import { parseAuthHeader } from "@/src/auth/api-keys";
@@ -7,6 +14,7 @@ import { log } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { isValidColorIndex } from "@/src/palettes";
 import { writePixel } from "@/src/pixels";
+import { clientIpFrom } from "@/lib/http";
 import {
   checkPixelWriteRateLimit,
   pixelWriteRateLimitHeaders,
@@ -14,36 +22,28 @@ import {
 
 const PATH = "/api/v1/pixels";
 
+// Cap on the JSON body size. The legitimate body is ~80 bytes; anything
+// over this is either junk or malicious. Rejecting before parse keeps a
+// hostile client from forcing memory pressure ahead of the rate limiter.
+const MAX_BODY_BYTES = 2_048;
+
 interface SectorMeta {
   width: number;
   height: number;
   paletteVersion: number;
 }
 
-// Tiny in-process cache. Sector dimensions + palette_version are stable
-// (no admin-update endpoint in M1), so caching is safe and avoids a DB
-// round-trip on every pixel write.
-const SECTOR_CACHE = new Map<string, SectorMeta>();
-
 async function getSector(sectorId: string): Promise<SectorMeta | null> {
-  const cached = SECTOR_CACHE.get(sectorId);
-  if (cached) return cached;
+  // No cache: M1 has one seeded sector and write volume is single-digit
+  // RPS at the contracted rate-limit. The earlier in-process cache lacked
+  // an invalidation hook for M2's sector-mutation endpoints, so we removed
+  // it rather than ship a footgun. Re-introduce when M2 lands an explicit
+  // invalidation path.
   const row = await prisma.sector.findUnique({
     where: { id: sectorId },
     select: { width: true, height: true, paletteVersion: true },
   });
-  if (!row) return null;
-  SECTOR_CACHE.set(sectorId, row);
   return row;
-}
-
-function clientIpFrom(request: Request): string {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return request.headers.get("x-real-ip") ?? "unknown";
 }
 
 function unauthorized(
@@ -85,23 +85,44 @@ export async function POST(request: Request) {
     );
   }
 
-  // Auth: bot keys only. Reject session-cookie auth and PAT auth here —
-  // the pixel-write API is bot-scoped, owner credentials don't apply.
+  // Auth: bot keys only.
   const authHeader = request.headers.get("authorization");
+  if (authHeader === null) {
+    return unauthorized(requestId, startedAt, "missing_header");
+  }
   const token = parseAuthHeader(authHeader);
   if (!token) {
-    return unauthorized(
-      requestId,
-      startedAt,
-      authHeader === null ? "missing_header" : "malformed_header",
-    );
-  }
-  if (!token.startsWith("bp_live_")) {
     return unauthorized(requestId, startedAt, "malformed_header");
   }
-  const auth = await botKeyAuth(token, pepper);
-  if (!auth) {
-    return unauthorized(requestId, startedAt, "unknown_key");
+  // PAT or admin token sent here is the wrong credential type, not malformed.
+  if (!token.startsWith("bp_live_")) {
+    return unauthorized(requestId, startedAt, "wrong_credential_type");
+  }
+  const authResult = await botKeyAuth(token, pepper);
+  if (!authResult.ok) {
+    return unauthorized(requestId, startedAt, authResult.reason);
+  }
+  const auth = authResult.data;
+
+  // Body-size cap before parse — rate limiter runs after, so without this
+  // a hostile client could force the runtime to allocate a huge body
+  // before any limit fires.
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    log("warn", {
+      request_id: requestId,
+      path: PATH,
+      status: 413,
+      error_slug: "body_too_large",
+      auth_type: "bot_key",
+      bot_id: auth.botId,
+      owner_id: auth.ownerId,
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json(
+      { error: "body_too_large", request_id: requestId },
+      { status: 413 },
+    );
   }
 
   // Parse body.
@@ -114,6 +135,7 @@ export async function POST(request: Request) {
       path: PATH,
       status: 400,
       error_slug: "invalid_input",
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       latency_ms: Date.now() - startedAt,
@@ -138,6 +160,7 @@ export async function POST(request: Request) {
       path: PATH,
       status: 400,
       error_slug: "invalid_input",
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       latency_ms: Date.now() - startedAt,
@@ -155,6 +178,7 @@ export async function POST(request: Request) {
       path: PATH,
       status: 404,
       error_slug: "sector_not_found",
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       sector_id: sectorId,
@@ -179,6 +203,7 @@ export async function POST(request: Request) {
       path: PATH,
       status: 400,
       error_slug: "out_of_bounds",
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       sector_id: sectorId,
@@ -196,6 +221,7 @@ export async function POST(request: Request) {
       path: PATH,
       status: 400,
       error_slug: "invalid_color",
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       sector_id: sectorId,
@@ -217,6 +243,7 @@ export async function POST(request: Request) {
         path: PATH,
         status: 503,
         error_slug: "rate_limit_unavailable",
+        auth_type: "bot_key",
         bot_id: auth.botId,
         owner_id: auth.ownerId,
         sector_id: sectorId,
@@ -233,6 +260,7 @@ export async function POST(request: Request) {
       path: PATH,
       status: 429,
       error_slug: "rate_limited",
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       sector_id: sectorId,
@@ -269,6 +297,7 @@ export async function POST(request: Request) {
       request_id: requestId,
       path: PATH,
       status: 200,
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       sector_id: sectorId,
@@ -293,11 +322,12 @@ export async function POST(request: Request) {
       request_id: requestId,
       path: PATH,
       status: 500,
+      auth_type: "bot_key",
       bot_id: auth.botId,
       owner_id: auth.ownerId,
       sector_id: sectorId,
       latency_ms: Date.now() - startedAt,
-      error_message: err instanceof Error ? err.message : String(err),
+      error_class: err instanceof Error ? err.constructor.name : "unknown",
     });
     return Response.json(
       { error: "internal_error", request_id: requestId },

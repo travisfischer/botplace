@@ -11,7 +11,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const ctx = newRouteContext(`/api/v1/owner/tokens/${id}`);
+  const ctx = newRouteContext(`/api/v1/owner/tokens/${id}`, request);
 
   const owner = await resolveOwner(request, ctx);
   if ("response" in owner) return owner.response;
@@ -19,17 +19,22 @@ export async function DELETE(
   const result = await revokePersonalAccessToken({
     tokenId: id,
     ownerId: owner.ownerId,
+    auditContext: {
+      requestId: ctx.requestId,
+      sourceIp: ctx.sourceIp,
+      actor: owner.ownerId,
+    },
   });
   if (!result.revoked) {
     return jsonError(ctx, 404, "token_not_found", {
-      extra: { owner_id: owner.ownerId },
+      extra: owner.logFields,
     });
   }
   log("info", {
     request_id: ctx.requestId,
     path: ctx.path,
     status: 204,
-    owner_id: owner.ownerId,
+    ...owner.logFields,
     latency_ms: Date.now() - ctx.startedAt,
   });
   return new Response(null, {

@@ -1,4 +1,5 @@
 import {
+  applyOwnerWriteRateLimit,
   jsonError,
   jsonOk,
   newRouteContext,
@@ -16,16 +17,19 @@ import {
 const PATH = "/api/v1/owner/tokens";
 
 export async function POST(request: Request) {
-  const ctx = newRouteContext(PATH);
+  const ctx = newRouteContext(PATH, request);
 
   const owner = await resolveOwner(request, ctx);
   if ("response" in owner) return owner.response;
+
+  const rl = await applyOwnerWriteRateLimit(ctx, owner);
+  if ("response" in rl) return rl.response;
 
   const name = await readNameBody(request);
   if (!name) {
     return jsonError(ctx, 400, "invalid_input", {
       message: "`name` is required and must be a non-empty string",
-      extra: { owner_id: owner.ownerId },
+      extra: owner.logFields,
     });
   }
 
@@ -36,21 +40,27 @@ export async function POST(request: Request) {
     ownerId: owner.ownerId,
     name,
     pepper: pepper.pepper,
+    auditContext: {
+      requestId: ctx.requestId,
+      sourceIp: ctx.sourceIp,
+      actor: owner.ownerId,
+    },
   });
   return jsonOk(ctx, mintPersonalAccessTokenResultToJson(result), {
     status: 201,
-    extra: { owner_id: owner.ownerId },
+    extra: owner.logFields,
+    headers: rl.headers,
   });
 }
 
 export async function GET(request: Request) {
-  const ctx = newRouteContext(PATH);
+  const ctx = newRouteContext(PATH, request);
   const owner = await resolveOwner(request, ctx);
   if ("response" in owner) return owner.response;
   const items = await listPersonalAccessTokensForOwner(owner.ownerId);
   return jsonOk(
     ctx,
     { items: items.map(personalAccessTokenSummaryToJson) },
-    { extra: { owner_id: owner.ownerId } },
+    { extra: owner.logFields },
   );
 }
