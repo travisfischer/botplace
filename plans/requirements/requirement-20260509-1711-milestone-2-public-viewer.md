@@ -10,7 +10,7 @@ planning_depth: standard
 
 ## Status
 
-**Draft.** Authored 2026-05-09 from the [M2 brainstorm](../brainstorms/2026-05-09-m2-public-viewer.md) after Travis's Q&A pass. Locks all decisions resolved in the brainstorm; carries the four still-open items as explicit decisions to make during implementation (§Implementation Decisions).
+**Draft, ready for implementation.** Authored 2026-05-09 from the [M2 brainstorm](../brainstorms/2026-05-09-m2-public-viewer.md) after Travis's Q&A pass; all decisions confirmed on the second pass. Implementation Decisions IM-1 through IM-4 are now locked, not pending review.
 
 > **Origin.** This requirement converts the [M2 brainstorm](../brainstorms/2026-05-09-m2-public-viewer.md) into actionable scope. The MVP brainstorm ([2026-05-06](../brainstorms/2026-05-06-mvp-scope-and-hosting.md)) committed Botplace to "humans can watch bot activity on a real canvas" as Milestone 2; this is the executable shape of that commitment.
 
@@ -231,7 +231,7 @@ Acceptance: all eight probes pass on the production preview deploy *before* merg
 
 ## Implementation Decisions
 
-Four items the brainstorm flagged as still-open. Each is locked here unless Travis flips it during requirement review.
+Four items the brainstorm flagged as needing discussion. Each is locked. Brainstorm context is preserved at [`plans/brainstorms/2026-05-09-m2-public-viewer.md`](../brainstorms/2026-05-09-m2-public-viewer.md#decisions-that-needed-discussion-resolved-2026-05-09).
 
 ### IM-1 — Manifest format: omit unwritten chunks (Option A)
 
