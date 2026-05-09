@@ -102,6 +102,100 @@ describe("PollLoop", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("respects Retry-After floor on RateLimitedError", async () => {
+    let throwOnce = true;
+    const tick = vi.fn().mockImplementation(async () => {
+      if (throwOnce) {
+        throwOnce = false;
+        throw Object.assign(new Error("manifest 429"), {
+          name: "RateLimitedError",
+          retryAfterSeconds: 5,
+        });
+      }
+    });
+    const onError = vi.fn();
+    const loop = new PollLoop({ tick, intervalMs: 1000, onError });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tick).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    // Exponential backoff would schedule the next tick at 1000ms.
+    // Retry-After (5s) should win — no tick at 1000ms or 2000ms.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(tick).toHaveBeenCalledTimes(1);
+
+    // Tick fires at 5000ms.
+    await vi.advanceTimersByTimeAsync(3001);
+    expect(tick).toHaveBeenCalledTimes(2);
+    loop.stop();
+  });
+
+  it("flips status.healthy = false after `unhealthyAfter` consecutive failures", async () => {
+    const tick = vi.fn().mockRejectedValue(new Error("boom"));
+    const onError = vi.fn();
+    const onStatusChange = vi.fn();
+    const loop = new PollLoop({
+      tick,
+      intervalMs: 1000,
+      unhealthyAfter: 3,
+      onError,
+      onStatusChange,
+    });
+    loop.start();
+
+    // Failure 1 — still healthy (1 < 3).
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loop.status().consecutiveFailures).toBe(1);
+    expect(loop.status().healthy).toBe(true);
+    expect(onStatusChange).not.toHaveBeenCalled();
+
+    // Failure 2 — backoff = 1000ms; still healthy (2 < 3).
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(loop.status().consecutiveFailures).toBe(2);
+    expect(loop.status().healthy).toBe(true);
+
+    // Failure 3 — backoff = 2000ms; flips to unhealthy.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(loop.status().consecutiveFailures).toBe(3);
+    expect(loop.status().healthy).toBe(false);
+    expect(onStatusChange).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenCalledWith(
+      expect.objectContaining({ healthy: false, consecutiveFailures: 3 }),
+    );
+    loop.stop();
+  });
+
+  it("flips status.healthy back to true on the first success after a streak", async () => {
+    let failCount = 3;
+    const tick = vi.fn().mockImplementation(async () => {
+      if (failCount-- > 0) throw new Error("boom");
+    });
+    const onStatusChange = vi.fn();
+    const loop = new PollLoop({
+      tick,
+      intervalMs: 1000,
+      unhealthyAfter: 3,
+      onError: () => {},
+      onStatusChange,
+    });
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0); // fail 1
+    await vi.advanceTimersByTimeAsync(1000); // fail 2
+    await vi.advanceTimersByTimeAsync(2000); // fail 3 → unhealthy
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ healthy: false }),
+    );
+
+    await vi.advanceTimersByTimeAsync(4000); // success → healthy
+    expect(loop.status().healthy).toBe(true);
+    expect(loop.status().consecutiveFailures).toBe(0);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ healthy: true }),
+    );
+    loop.stop();
+  });
+
   it("pause cancels the timer; resume re-arms it", async () => {
     const tick = vi.fn().mockResolvedValue(undefined);
     const loop = new PollLoop({ tick, intervalMs: 1000 });

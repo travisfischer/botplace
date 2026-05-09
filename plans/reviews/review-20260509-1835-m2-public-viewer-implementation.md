@@ -3,21 +3,41 @@ date: 2026-05-09
 target: feat/m2-public-viewer (PR #11) — M2 public canvas viewer implementation
 target_commit: 8c87abf
 review_type: multi-reviewer-principle
-status: p1-addressed
+status: p1-and-p2-addressed
 ---
 
-## Disposition (added 2026-05-09 after review)
+## Disposition (final, 2026-05-09)
 
-Decisions on the 5 P1 findings, made by Travis post-review:
+### P1 findings — all addressed or intentionally skipped
 
-- **P1.1 SSRF** — **Fixed.** Extracted `loadSectorMeta` into `src/sectors/index.ts`; both the public route handler and the server component call it directly. The HTTP loopback is gone, the SSRF surface with it.
-- **P1.2 Rollback path** — **Skipped intentionally.** Pre-public release; no real users yet. The cost of the env-var flag isn't justified at this stage. Re-evaluate when M2.5 demo bots and any public announcement land.
-- **P1.3 V5 fallback / public-read rate limit** — **Fixed.** Added `PUBLIC_READ` bucket (60/sec/IP, capacity 60) to `lib/rate-limit.ts`, wired into all three public route handlers. The Vercel Firewall edge rule remains the first line; this is the in-app floor.
-- **P1.4 / P1.5 Plan branch coordination** — **Fixed.** Cherry-picked the three planning commits (`469f3d1`, `83b4f7e`, `cf678cc`) onto `feat/m2-public-viewer`. PR #10 will be closed in favor of #11; the brainstorm + requirement + implementation now ship as one merge unit. Cross-references resolve.
+- **P1.1 SSRF** — **Fixed.** Extracted `loadSectorMeta` into `src/sectors/index.ts`; both the public route handler and the server component call it directly. The HTTP loopback is gone.
+- **P1.2 Rollback path** — **Skipped intentionally.** Pre-public release; no real users yet. Re-evaluate when M2.5 demo bots / public announcement land.
+- **P1.3 V5 fallback / public-read rate limit** — **Fixed.** Added `PUBLIC_READ` bucket (60/sec/IP, capacity 60) to `lib/rate-limit.ts`, wired into all three public route handlers as the always-on in-app floor below the Firewall edge rule.
+- **P1.4 / P1.5 Plan branch coordination** — **Fixed.** Cherry-picked the three planning commits onto `feat/m2-public-viewer`. PR #10 closed in favor of #11.
 
-Bundled with P1.3: the **P2.5 canonical-coord regex** (`^(0|[1-9][0-9]{0,3})$`) on `chunk_x`/`chunk_y` path segments — defense in depth on cache-key fragmentation, small enough to land alongside the rate-limit work. P2.3 (try/catch around Prisma calls in public handlers) also folded in — same code surfaces being touched.
+### P2 findings — all addressed in this PR
 
-P2 and P3 findings remain open; the rest of the M3 / polish window can address them.
+- **P2.1 Probe 8 broken** — **Fixed.** Added `pnpm sector:create-probe` / `sector:delete-probe` scripts (psql-based, no GUI). Moved the M2-only sector guard behind `M2_SECTOR_ALLOWLIST` env var so the probe needs no transient code edit. Probe 8 fully agent-runnable.
+- **P2.2 Vercel Firewall has no IaC path** — **Recharacterized.** With P1.3's `PUBLIC_READ` floor in place, the Firewall is now the *optimization layer*, not the only line of defense. Docs reflect the layered model. Firewall-as-code is a real follow-up but no longer load-bearing for safe public-endpoint deploy.
+- **P2.3 No try/catch around Prisma in public handlers** — **Fixed** (already addressed in the P1 fix commit; re-verified).
+- **P2.4 Stale-state affordance** — **Fixed.** `PollLoop` now exposes `onStatusChange` with `consecutiveFailures` and a `healthy` flag (default unhealthy threshold = 3). Sector-viewer renders a "Reconnecting…" pill when unhealthy. Tests cover the transition both ways.
+- **P2.5 Path-parameter normalization** — **Fixed** (folded into the P1 fix commit; canonical-coord regex on chunk path segments).
+- **P2.6 SSR fetch lacks AbortSignal/timeout** — **Moot.** Loopback dropped entirely (P1.1 fix); no SSR fetch to time out.
+- **P2.7 `screenToWorld()` speculative** — **Fixed.** Function and its tests removed.
+- **P2.8 `MAX_SCALE = 16`** — **Fixed.** Lowered to 8 to match V4 spec.
+- **P2.9 Retry-After handling missing** — **Fixed.** New `RateLimitedError` type in `viewer-fetch.ts` carries `retryAfterSeconds`; `PollLoop` uses it as the floor on the next schedule. New unit test covers the exponential-backoff vs Retry-After interaction.
+- **P2.10 Manifest + ETag only on public surface** — **Fixed.** Added `GET /api/v1/sectors/:id/manifest` (authenticated, same shape as public counterpart). Added ETag + `If-None-Match` 304 short-circuit to the existing authenticated chunk endpoint. Bots get the same diff-poll primitives as the viewer.
+- **P2.11 Probe headlessness story missing** — **Fixed.** Added "Headless?" + "Phase" columns to the probe matrix.
+- **P2.12 Pre-merge probe subset undefined** — **Fixed.** Probes 1, 4, 5, 8 explicitly tagged pre-merge (run against `$BOTPLACE_URL` preview). Probes 2, 3, 6, 7 tagged post-deploy. URL parameterized via `${BOTPLACE_URL:-https://botplace.app}` throughout.
+- **P2.13 Rollout order ambiguous** — **Fixed.** New "M2 rollout order" section in `docs/dev/probes/m2-viewer.md` naming the 7 steps in order, including M2.5 demo bots and the README flip.
+- **P2.14 Missing M2 review artifact** — **Fixed.** This document.
+- **P2.15 Doc rationale duplication** — **Fixed.** `docs/dev/viewer.md` and `docs/admin/v1.md` updated to reflect the layered defense model post-P1.3 and post-P1.1. Source-comment headers trimmed where they duplicated the viewer.md sections.
+- **P2.16 Probes README TOC missing entry** — **Fixed.** `docs/dev/probes/README.md` now lists `m2-viewer.md`.
+- **P2.17 Header link set diverges from V2** — **Fixed.** Dropped the "API" link; "Build a bot" / "Account" remain per spec.
+
+### P3 findings — carried into M3 window
+
+P3s (26 total) are quality nits that don't gate M2 ship. They'll triage into the M3 polish backlog or land alongside related M3 work as natural touch-points.
 
 ---
 

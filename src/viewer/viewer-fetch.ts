@@ -23,6 +23,45 @@ function urlFor(base: string | undefined, path: string): string {
   return base.replace(/\/$/, "") + path;
 }
 
+/**
+ * Typed error for 429 / 503 responses. The poll loop catches this and
+ * uses `retryAfterSeconds` as the floor on the next schedule, honoring
+ * the V3-spec'd "respect Retry-After, double the poll interval until
+ * success" contract.
+ */
+export class RateLimitedError extends Error {
+  readonly retryAfterSeconds: number;
+  readonly status: number;
+  constructor(status: number, retryAfterSeconds: number, message: string) {
+    super(message);
+    this.name = "RateLimitedError";
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function parseRetryAfter(res: Response): number {
+  const raw = res.headers.get("retry-after");
+  if (!raw) return 0;
+  // RFC 7231: Retry-After is either delta-seconds (integer) or HTTP-date.
+  // The server only emits delta-seconds; parse defensively anyway.
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds;
+  const dateMs = Date.parse(raw);
+  if (Number.isFinite(dateMs)) {
+    return Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+  }
+  return 0;
+}
+
+function rateLimitedFromResponse(res: Response, label: string): RateLimitedError {
+  return new RateLimitedError(
+    res.status,
+    parseRetryAfter(res),
+    `${label} ${res.status}`,
+  );
+}
+
 export async function fetchManifest(
   sectorId: string,
   signal: AbortSignal,
@@ -33,6 +72,9 @@ export async function fetchManifest(
     urlFor(opts.baseUrl, `/api/v1/public/sectors/${sectorId}/manifest`),
     { signal, headers: { Accept: "application/json" } },
   );
+  if (res.status === 429 || res.status === 503) {
+    throw rateLimitedFromResponse(res, "manifest");
+  }
   if (!res.ok) {
     throw new Error(`manifest ${res.status}`);
   }
@@ -80,6 +122,12 @@ export async function fetchChunkIfChanged(
       outcome: "not_modified",
       version: cached,
     };
+  }
+  if (res.status === 429 || res.status === 503) {
+    throw rateLimitedFromResponse(
+      res,
+      `chunk (${entry.chunk_x},${entry.chunk_y})`,
+    );
   }
   if (!res.ok) {
     throw new Error(`chunk ${res.status} (${entry.chunk_x},${entry.chunk_y})`);

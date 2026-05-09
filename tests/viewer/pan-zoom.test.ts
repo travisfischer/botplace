@@ -8,7 +8,6 @@ import {
   clampScale,
   defaultTransform,
   normalize,
-  screenToWorld,
   translateBy,
   zoomAround,
 } from "@/src/viewer/pan-zoom";
@@ -87,19 +86,3 @@ describe("normalize", () => {
   });
 });
 
-describe("screenToWorld", () => {
-  it("returns null outside the world", () => {
-    const t = { tx: 0, ty: 0, scale: 1 };
-    expect(screenToWorld(t, WORLD, { x: -5, y: 5 })).toBeNull();
-    expect(screenToWorld(t, WORLD, { x: 1500, y: 5 })).toBeNull();
-  });
-
-  it("inverts the transform correctly inside bounds", () => {
-    const t = { tx: 50, ty: 50, scale: 2 };
-    // Screen point (150, 150) → world ((150-50)/2, (150-50)/2) = (50, 50).
-    expect(screenToWorld(t, WORLD, { x: 150, y: 150 })).toEqual({
-      x: 50,
-      y: 50,
-    });
-  });
-});

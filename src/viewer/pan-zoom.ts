@@ -29,7 +29,9 @@ export interface World {
 }
 
 export const MIN_SCALE = 0.1;
-export const MAX_SCALE = 16;
+// Spec'd in M2 requirement V4: at 0.1 the whole sector fits in 100px;
+// at 8 each pixel is 8 CSS px (readable at 1:1 on a phone screen).
+export const MAX_SCALE = 8;
 
 /**
  * Default transform: fit the world into the viewport with ~5% padding.
@@ -129,18 +131,3 @@ export function normalize(
   );
 }
 
-/**
- * Convert a screen-space point to world (pixel) coordinates. Returns null
- * if the point is outside the world bounds. Useful for hover labels and
- * future click-to-inspect.
- */
-export function screenToWorld(
-  t: Transform,
-  world: World,
-  point: { x: number; y: number },
-): { x: number; y: number } | null {
-  const wx = Math.floor((point.x - t.tx) / t.scale);
-  const wy = Math.floor((point.y - t.ty) / t.scale);
-  if (wx < 0 || wy < 0 || wx >= world.width || wy >= world.height) return null;
-  return { x: wx, y: wy };
-}

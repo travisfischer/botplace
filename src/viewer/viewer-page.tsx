@@ -57,9 +57,6 @@ export async function ViewerPage({ sectorId }: ViewerPageProps) {
         <strong style={{ fontSize: 18 }}>Botplace</strong>
         <span style={{ opacity: 0.6, fontSize: 13 }}>{meta.name}</span>
         <span style={{ flex: 1 }} />
-        <Link href="/api/v1/public/sectors/sector-1" style={linkStyle}>
-          API
-        </Link>
         {session?.user ? (
           <Link href="/account" style={linkStyle}>
             Account

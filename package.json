@@ -35,6 +35,8 @@
     "pat:list": "scripts/pat/list.sh",
     "pat:revoke": "scripts/pat/revoke.sh",
     "events:export": "scripts/events/export.sh",
+    "sector:create-probe": "scripts/sectors/create-probe.sh",
+    "sector:delete-probe": "scripts/sectors/delete-probe.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {

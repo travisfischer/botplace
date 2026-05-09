@@ -24,7 +24,7 @@ import {
   zoomAround,
   type Transform,
 } from "./pan-zoom";
-import { PollLoop } from "./poll-loop";
+import { PollLoop, type PollLoopStatus } from "./poll-loop";
 import { fetchChunkIfChanged, fetchManifest } from "./viewer-fetch";
 
 export interface SectorMeta {
@@ -60,6 +60,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
   useEffect(() => {
     transformRef.current = transform;
   }, [transform]);
+  const [healthy, setHealthy] = useState(true);
 
   // ---- Initial fit + window resize ----
   useEffect(() => {
@@ -103,7 +104,11 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       }
     };
 
-    const loop = new PollLoop({ tick, intervalMs: 1000 });
+    const loop = new PollLoop({
+      tick,
+      intervalMs: 1000,
+      onStatusChange: (status: PollLoopStatus) => setHealthy(status.healthy),
+    });
 
     const onVisibility = () => {
       if (document.hidden) loop.pause();
@@ -299,6 +304,26 @@ export function SectorViewer({ meta }: SectorViewerProps) {
         defaultColor={meta.default_color}
         transform={transform}
       />
+      {!healthy && (
+        <div role="status" aria-live="polite" style={stalePillStyle}>
+          Reconnecting…
+        </div>
+      )}
     </div>
   );
 }
+
+const stalePillStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 12,
+  left: "50%",
+  transform: "translateX(-50%)",
+  padding: "6px 14px",
+  borderRadius: 999,
+  background: "rgba(85, 65, 95, 0.92)",
+  color: "#dcf5ff",
+  fontSize: 12,
+  fontFamily: "system-ui, -apple-system, sans-serif",
+  pointerEvents: "none",
+  zIndex: 10,
+};

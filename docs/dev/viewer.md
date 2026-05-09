@@ -75,14 +75,19 @@ The canvas pixel buffer stays 1:1 with the world; CSS handles all zoom/pan via `
 ### Pointer Events, not separate mouse + touch
 One event model handles desktop mouse, mobile touch, and trackpad. Multi-touch (pinch) is implemented by tracking pointers in a `Map<pointerId, point>` and computing distance + midpoint between active pointers when count == 2. `touch-action: none` on the wrapper prevents the browser's default pan/zoom from intercepting our gestures.
 
-### Server component fetches via HTTP (IM-4)
-`viewer-page.tsx` calls `fetch('/api/v1/public/sectors/' + id)` instead of importing Prisma directly. This keeps SSR on the CDN-cached path (`s-maxage=60` on metadata) so a fresh visitor doesn't trigger a Prisma cold-start for every page load. The trade-off is one extra hop on a cache miss; in practice that's <100ms because the request loops back to the same Vercel function.
+### Server component calls the shared loader directly (was IM-4 → revised post-review)
+`viewer-page.tsx` calls `loadSectorMeta()` from `src/sectors/` directly. The first M2 implementation looped back through the public HTTP endpoint to share its CDN cache, but that shape used `headers().get('host')` as the URL authority of an outbound fetch — an attacker-controlled `Host` header would have redirected the SSR fetch (M2 review P1.1). Calling Prisma directly closes the SSRF surface; the route handler's response cache is unaffected because Vercel caches it independently of who calls the underlying loader.
 
 ### Node runtime, not Edge (IM-3)
 Public endpoints run on the existing Node runtime + Prisma + adapter-pg setup. CDN absorbs the polling load; origin sees ~1 manifest query per Vercel region per cache cycle. The latency budget under that load is well within Node's reach, so the cost of switching to Edge + Neon's serverless HTTP driver isn't justified yet. Escalation criterion: if the V7 cold-start TTFB probe shows origin p95 > 100ms on `/manifest` under realistic concurrent viewer load, revisit.
 
-### No app-level rate limit on public reads
-The M2 brainstorm landed on "lean on Vercel + Cloudflare anti-abuse defaults; don't ship app-level rate limits on public reads." See `admin/v1.md § Public endpoint Firewall rules` for the edge config. If the Vercel free-tier rate-limit feature isn't available when this rolls out, fall back to a generous `PUBLIC_READ` bucket at 60/sec/IP.
+### Layered anti-abuse: in-app floor + edge optimization
+The M2 brainstorm landed on "lean on Vercel + Cloudflare anti-abuse defaults" and the M2 review (P1.3) clarified that an in-app floor still pulls weight as defense in depth. So both layers ship:
+
+- **In-app floor (always on):** `PUBLIC_READ` bucket in `lib/rate-limit.ts`, 60/sec/IP, fail-closed if Upstash is unreachable. Wired into all three `/api/v1/public/*` handlers; emits `X-RateLimit-Remaining-Public-Read`.
+- **Edge optimization:** Vercel Firewall rules per [`admin/v1.md § Public endpoint Firewall rules`](../admin/v1.md#public-endpoint-firewall-rules). Operator-configured post-deploy. Catches abuse before it reaches origin.
+
+The floor protects against the case where the Firewall rule isn't applied yet (between merge and operator action), the Firewall has a config drift, or traffic somehow bypasses the edge.
 
 ## Adding a new public endpoint
 

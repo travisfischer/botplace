@@ -146,6 +146,33 @@ export async function GET(
     select: { data: true, version: true, updatedAt: true },
   });
 
+  // ETag = `"<chunk_version>"` per RFC 7232 (must be quoted). Same shape
+  // as the public chunk endpoint so bots can use the same If-None-Match
+  // diff strategy as the M2 viewer (see docs/api/v1.md).
+  const versionStr = chunk ? chunk.version.toString() : "0";
+  const etag = `"${versionStr}"`;
+  const ifNoneMatch = request.headers.get("if-none-match");
+
+  if (ifNoneMatch && ifNoneMatch === etag) {
+    log("info", {
+      request_id: requestId,
+      path,
+      status: 304,
+      auth_type: a.authType,
+      owner_id: a.ownerId,
+      sector_id: sectorId,
+      chunk_version_after: versionStr,
+      latency_ms: Date.now() - startedAt,
+    });
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: etag,
+        ...readHeaders,
+      },
+    });
+  }
+
   if (!chunk) {
     log("info", {
       request_id: requestId,
@@ -159,6 +186,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "application/octet-stream",
+        ETag: etag,
         "X-Chunk-Version": "0",
         ...readHeaders,
       },
@@ -177,6 +205,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": "application/octet-stream",
+      ETag: etag,
       "X-Chunk-Version": chunk.version.toString(),
       "X-Chunk-Updated-At": chunk.updatedAt.toISOString(),
       ...readHeaders,

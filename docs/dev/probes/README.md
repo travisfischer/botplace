@@ -9,6 +9,7 @@ The point isn't comprehensive coverage — that's `pnpm test`'s job. It's giving
 - [`replay.md`](replay.md) — confirms the `PixelEvent` log can reconstruct chunk state byte-for-byte. Backed by `pnpm test:api:replay`.
 - [`redis-outage.md`](redis-outage.md) — confirms the rate limiter fails closed (503) when Upstash is unreachable.
 - [`concurrency.md`](concurrency.md) — confirms `SELECT … FOR UPDATE` serializes concurrent writes to the same chunk.
+- [`m2-viewer.md`](m2-viewer.md) — 8-probe matrix for the public viewer: 1s-tick timing, mobile touch (iOS Safari + Android Chrome), CDN ETag round-trip, cold-start TTFB, Vercel Firewall rate-limit, empty-canvas first paint. Merge gate for any change under `src/viewer/` or `app/api/v1/public/...`.
 
 ## When to add a probe
 
