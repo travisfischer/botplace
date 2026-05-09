@@ -75,7 +75,7 @@ pnpm db:migrate:deploy
 
 This is idempotent — re-running it on an already-migrated DB does nothing.
 
-When adding new schema models (Milestone 1+):
+When changing schema models, generate a fresh migration against your dev branch:
 
 ```bash
 pnpm db:migrate:dev --name <change-name>

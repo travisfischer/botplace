@@ -2,9 +2,11 @@
 date: 2026-05-08
 type: review
 target: plans/requirements/requirement-20260508-1121-milestone-1-bot-registration-and-pixel-api.md
-status: blocked
+status: addressed
 recommendation: address P1 blockers and the strongest P2 themes before flipping the requirement to ratified
 ---
+
+> **Resolution (2026-05-09).** The M1 requirement was revised pre-implementation to fold in P1 + the strongest P2 themes (see the requirement's revision note). M1 itself shipped in [PR #7](https://github.com/travisfischer/botplace/pull/7), and the consensus P2s carved out of the [implementation review](review-20260508-1822-m1-implementation-code.md) shipped in [PR #8](https://github.com/travisfischer/botplace/pull/8). Per-item Developer Decisions inline below remain accurate.
 
 # Review: Milestone 1 — Bot Registration, Pixel API, and Event Log
 

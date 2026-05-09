@@ -1,12 +1,17 @@
 ---
 date: 2026-05-08
+shipped: 2026-05-09
 type: chore
 topic: m1-polish-and-defense-in-depth
-status: draft
+status: shipped
 planning_depth: standard
 ---
 
 # Requirement: M1 Polish — Defense-in-Depth, Test Surface, CI, Operator Artifacts
+
+## Status
+
+**Shipped 2026-05-09** in [PR #8](https://github.com/travisfischer/botplace/pull/8). All seven themes (T1–T7) addressed: tagged auth resolvers + expanded `AuthFailureReason` + `auth_type` log field + `AdminAuditEvent` rows on every credential lifecycle event + HMAC-both-sides admin-token compare (T1); pixel-write-tx + auth-invariants tests + coverage thresholds (T2); per-call Upstash timeout + body-size cap + `SECTOR_CACHE` removed + idempotent-revoke contract + memory-fallback dev note (T3); index cleanup migration `20260509052209_m1_polish_index_cleanup` + cascade-rationale comments (T4); `.github/workflows/ci.yml` (T5); `docs/admin/v1.md` + `docs/dev/probes/{replay,redis-outage,concurrency}.md` + `pnpm events:export` + `docs/README.md` TOC (T6); `OWNER_WRITE` rate-limit bucket on credential-mutation endpoints + `pnpm bot:*` / `pnpm pat:*` shell wrappers + shell-only worked example (T7). All tests pass, CI green on first run after the pnpm-version conflict fix.
 
 > **Origin.** This document carves out the consensus P2 themes from the [M1 implementation review](../reviews/review-20260508-1822-m1-implementation-code.md) so the M1 PR can ship without bundling them. The 8 P1 blockers from that review are addressed in the M1 PR itself; everything below is the next layer — observability and security defense-in-depth, the load-bearing tests M1 deferred, the missing CI gate, and the operator-facing artifacts that haven't been written yet.
 
