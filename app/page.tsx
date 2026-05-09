@@ -1,36 +1,11 @@
-import { auth, signIn, signOut } from "@/auth";
+// Root canvas viewer — renders sector-1 directly (no redirect). Travis
+// confirmed in M2 brainstorm Resolved-F: `/` and `/sectors/sector-1` both
+// render the same component; the latter is the canonical bookmark form.
 
-export default async function Home() {
-  const session = await auth();
+import { ViewerPage } from "@/src/viewer/viewer-page";
 
-  return (
-    <main>
-      <h1>Botplace</h1>
-      {session?.user ? (
-        <>
-          <p>Signed in as {session.user.email}</p>
-          <p>
-            <a href="/bots">Manage bots</a>
-          </p>
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/" });
-            }}
-          >
-            <button type="submit">Sign out</button>
-          </form>
-        </>
-      ) : (
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: "/" });
-          }}
-        >
-          <button type="submit">Sign in with Google</button>
-        </form>
-      )}
-    </main>
-  );
+export const dynamic = "force-dynamic";
+
+export default function Home() {
+  return <ViewerPage sectorId="sector-1" />;
 }

@@ -17,7 +17,12 @@ export type AuthFailureReason =
   | "wrong_credential_type"
   | "server_misconfigured";
 
-export type AuthType = "session" | "pat" | "bot_key" | "admin_token";
+export type AuthType =
+  | "session"
+  | "pat"
+  | "bot_key"
+  | "admin_token"
+  | "public";
 
 export interface LogFields {
   request_id?: string;
