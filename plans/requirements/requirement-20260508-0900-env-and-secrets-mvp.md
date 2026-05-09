@@ -1,12 +1,17 @@
 ---
 date: 2026-05-08
+shipped: 2026-05-08
 type: chore
 topic: env-and-secrets-mvp
-status: draft
+status: shipped
 planning_depth: standard
 ---
 
 # Requirement: Env and Secrets MVP
+
+## Status
+
+**Shipped 2026-05-08.** Landed in the same PR #5 as the cloud-agent dev-branch workflow; the two requirements are co-implemented. [`docs/dev/secrets.md`](../../docs/dev/secrets.md) carries the source-of-truth table and the allow/deny list. [`docs/dev/setup.md`](../../docs/dev/setup.md) documents `.env` as the single canonical local env file and removes the prior `.env` + `.env.local` split. `pnpm env:check` ([`scripts/env/check-env.sh`](../../scripts/env/check-env.sh)) reports presence by name only and exits non-zero on missing inputs. Bootstrap writes only allow-list values (`DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `NEON_BRANCH_NAME`) atomically with `chmod 600`. The "Current State" section below reflects the pre-implementation snapshot and is preserved for historical context.
 
 ## Problem / Outcome
 
@@ -60,28 +65,28 @@ A non-public, non-streaming local session may temporarily write other values to 
 
 ### Functional Requirements
 
-- [ ] `docs/dev/secrets.md` includes a source-of-truth table or equivalent paragraph and the rule that long-lived credentials live in process env, never on disk in repo-tracked files.
-- [ ] `docs/dev/setup.md` documents one canonical local env file as the local happy path for both human and cloud-agent sessions.
-- [ ] Bootstrap (defined in [cloud-agent-neon-dev-branches](requirement-20260508-0851-cloud-agent-neon-dev-branches.md)) writes only allow-list values to the local env file.
-- [ ] A `pnpm env:check` (or equivalent) command reports: which required env vars are present in process env (by name only), which `op://` refs resolve (by name only), the selected Neon branch name, and DB-OK status. Exits non-zero if any required input is missing.
-- [ ] `lib/prisma.ts` (Next.js runtime) and `prisma.config.ts` (Prisma CLI) read the same canonical local env file.
+- [x] `docs/dev/secrets.md` includes a source-of-truth table or equivalent paragraph and the rule that long-lived credentials live in process env, never on disk in repo-tracked files.
+- [x] `docs/dev/setup.md` documents one canonical local env file as the local happy path for both human and cloud-agent sessions.
+- [x] Bootstrap (defined in [cloud-agent-neon-dev-branches](requirement-20260508-0851-cloud-agent-neon-dev-branches.md)) writes only allow-list values to the local env file.
+- [x] A `pnpm env:check` (or equivalent) command reports: which required env vars are present in process env (by name only), which `op://` refs resolve (by name only), the selected Neon branch name, and DB-OK status. Exits non-zero if any required input is missing.
+- [x] `lib/prisma.ts` (Next.js runtime) and `prisma.config.ts` (Prisma CLI) read the same canonical local env file.
 
 ### Non-Functional Requirements
 
-- [ ] Scripts are non-interactive once `op` is signed in or process env is populated.
-- [ ] Scripts fail loudly and specifically when a required ref is missing or a `op://` ref does not resolve.
-- [ ] Scripts never echo secret values, never log full DB connection strings.
-- [ ] Public-facing docs are safe to share and do not enumerate per-token capabilities.
-- [ ] The convention does not fight Next.js or Vercel defaults.
+- [x] Scripts are non-interactive once `op` is signed in or process env is populated.
+- [x] Scripts fail loudly and specifically when a required ref is missing or a `op://` ref does not resolve.
+- [x] Scripts never echo secret values, never log full DB connection strings.
+- [x] Public-facing docs are safe to share and do not enumerate per-token capabilities.
+- [x] The convention does not fight Next.js or Vercel defaults.
 
 ## Acceptance Criteria
 
-- [ ] A cloud agent with `NEON_API_KEY` and `NEON_PROJECT_ID` in its platform env can run bootstrap with no 1Password dependency.
-- [ ] A human with `op` available can populate the same vars via `op run --env-file <local-ref-template> -- pnpm db:bootstrap` and get the same outcome.
-- [ ] `pnpm env:check` prints names and statuses, never values.
-- [ ] After bootstrap, `pnpm dev` works and `pnpm db:migrate:dev` works against the same canonical local env file.
-- [ ] The generated local env file contains the allowed values and does not contain `NEON_API_KEY`, `VERCEL_TOKEN`, or other long-lived tokens.
-- [ ] Vercel production/preview behavior is unchanged.
+- [x] A cloud agent with `NEON_API_KEY` and `NEON_PROJECT_ID` in its platform env can run bootstrap with no 1Password dependency.
+- [x] A human with `op` available can populate the same vars via `op run --env-file <local-ref-template> -- pnpm db:bootstrap` and get the same outcome.
+- [x] `pnpm env:check` prints names and statuses, never values.
+- [x] After bootstrap, `pnpm dev` works and `pnpm db:migrate:dev` works against the same canonical local env file.
+- [x] The generated local env file contains the allowed values and does not contain `NEON_API_KEY`, `VERCEL_TOKEN`, or other long-lived tokens.
+- [x] Vercel production/preview behavior is unchanged.
 
 ## Risks and Mitigations
 

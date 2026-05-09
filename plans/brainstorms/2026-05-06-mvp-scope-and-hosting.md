@@ -1,10 +1,24 @@
 ---
 date: 2026-05-06
 topic: mvp-scope-and-hosting
-status: draft
+status: adopted
 ---
 
 # Brainstorm: MVP Scope and Hosting
+
+## Status (as of 2026-05-08)
+
+The recommendations in this brainstorm were adopted and converted into requirements. Execution is underway — Milestone 0 plus the agent-dev infra contract have shipped; Milestones 1–5 are still pending.
+
+**Shipped:**
+
+- **Milestone 0 — Project Skeleton and Hosting** → [requirement](../requirements/requirement-20260507-0805-milestone-0-skeleton-and-hosting.md). Live at <https://botplace.app>. Stack landed exactly as Approach A recommended: Next.js 16 + React 19 + TypeScript on Vercel, Neon Postgres via the Vercel↔Neon integration with per-PR branches, Cloudflare DNS, Prisma 7 for migrations, pnpm 11.
+- **Cloud-agent Neon dev-branch workflow** → [requirement](../requirements/requirement-20260508-0851-cloud-agent-neon-dev-branches.md). Hosted Neon dev branches as the default agent dev path; not anticipated in this brainstorm but slotted in before Milestone 1.
+- **Env and secrets contract** → [requirement](../requirements/requirement-20260508-0900-env-and-secrets-mvp.md). Single canonical `.env`, Vercel as deploy source-of-truth, process env as the script interface, 1Password for human access.
+
+**Pending (Milestones 1–5):** none of these have requirements docs yet. Bot registration + pixel API + event log (M1), public viewer (M2), bot DX (M3), ops hardening (M4), realtime decision (M5).
+
+**Open questions resolved 2026-05-08** (see Resolved Decisions section below): Redis provider, palette selection method, bot registration identity, write semantics, and starter-bot format are all decided. Exact 8-color palette values are still deferred to the M1 spec — that is the only intentional remaining defer.
 
 ## Problem / Opportunity
 
@@ -107,7 +121,7 @@ Vercel no longer offers Vercel KV for new projects; Redis is now connected throu
 - Redis Cloud: more traditional Redis provider, also available through the Vercel Marketplace, potentially better if we want a more canonical Redis vendor.
 - Neon-only/Postgres-only rate limits: fewer providers, but not a good default because request-rate counters are a poor fit for the primary transactional database.
 
-Recommendation: use Upstash for the MVP unless provider count becomes a hard constraint. Hide it behind a small rate-limit module so moving to Redis Cloud later means changing one integration boundary, not product code.
+**Decision (2026-05-08): Upstash Redis for the MVP.** REST-based SDK is the right shape for serverless rate-limit counters on Vercel (no connection-pool drama on cold starts) and matches the existing Vercel-native posture. Hide it behind a small rate-limit module so moving to Redis Cloud later means changing one integration boundary, not product code.
 
 ## Proposed MVP Architecture
 
@@ -134,7 +148,7 @@ Reasons to avoid human accounts in the MVP:
 - Auth complexity distracts from proving the API/canvas loop.
 - Fully open launch can use simple bot registration with email verification or a lightweight owner contact.
 
-Recommendation: do not build full human accounts in the MVP. Create bot accounts with API keys and minimal owner metadata. If open self-serve registration needs abuse control, use email verification or a magic-link owner record only for managing bot keys, not as a visible gameplay identity.
+**Decision (2026-05-08): Google OAuth for owner identity, API keys minted underneath.** Google sign-in is universal (no developer-skewed audience filter the way GitHub OAuth would impose), gives stable identity for abuse-handling without building an email-verification flow, and keeps the gameplay surface bot-only — owner identity is a backstage concept used for key management, not a visible profile. No full human-account model, no magic-link/email-verification stack to maintain.
 
 ### Palette Model
 
@@ -153,6 +167,8 @@ Future palette tiers should be part of the data model but not active mechanics i
 - Tier 3: high-expression palette or special effects.
 
 The important MVP decision is to store color as a palette index and validate against the sector's active base palette. Do not allow arbitrary hex colors.
+
+**Decision (2026-05-08): selection method, not specific colors.** The 8 base-palette values will be sampled from a curated palette source (Lospec or similar) rather than hand-picked, and the exact hex values get locked in the M1 spec with a reference image in front of us. The brainstorm-level commitment is the rule, not the colors.
 
 ### Initial Read Model
 
@@ -181,6 +197,8 @@ Initial rate limit:
 Optimistic concurrency can be added at the chunk or pixel level. For the first usable milestone, last-write-wins with event ordering is acceptable if the API returns timestamps and versions. Compare-and-swap can be deferred unless bot strategy needs conditional writes from day one.
 
 Compare-and-swap means the bot says, "set this pixel to color 3 only if it is still version 42." If another bot already changed the pixel to version 43, the write is rejected and the bot can re-read before deciding what to do. This prevents accidental overwrites based on stale reads, but it adds complexity to every client. With a one-update-per-minute MVP, last-write-wins is simpler and probably fine.
+
+**Decision (2026-05-08): last-write-wins for the MVP.** API responses surface version + timestamp on every accepted write so CAS can be added later as a non-breaking addition (e.g. an optional `If-Match: <version>` header) once contention warrants it.
 
 ### Viewer
 
@@ -246,9 +264,9 @@ Exit criteria:
 Goal: writing bots is pleasant enough that early users can participate.
 
 Scope:
-- Clear API docs and examples.
-- Minimal local bot starter script.
-- LLM-agent-oriented instructions, such as an agent file or skill-style prompt that teaches an agent how to call the Botplace API safely.
+- Clear API docs and examples (Markdown, in-repo).
+- One Python starter script — universal floor, runs anywhere.
+- An `AGENTS.md`-style coding-agent instruction file targeted at LLM-agent bot authoring (mirrors the convention Botplace already uses internally).
 - Better error responses.
 - Operator-adjustable rate limits.
 
@@ -256,6 +274,8 @@ Exit criteria:
 - A starter bot can draw a simple pattern through the public API one pixel at a time.
 - API docs are sufficient for an external developer or coding agent to build a bot.
 - Agent instructions emphasize API-key handling, rate limits, palette indices, and non-manual operation.
+
+**Decision (2026-05-08): starter format = Markdown docs + one Python script + an `AGENTS.md` file.** This is the smallest set that covers humans (docs), scripts (Python is the universal floor), and coding agents (`AGENTS.md` is the cross-platform convention). Per-platform polish — Claude skill, Codex skill, OpenAI agent example — moves to Possible Future Enhancements and gets prioritized once we see which platforms users actually arrive on.
 
 ### Milestone 4: Operational Hardening
 
@@ -302,19 +322,22 @@ Exit criteria:
 - Defer visible bot attribution/inspect UI: valuable soon, but not required to prove the core canvas/API loop.
 - Ship local/agent-oriented starter bot materials, not hosted bots: prove LLM-agent participation without operating user agents yet.
 - Keep multi-sector in the schema and URL shape from day one: no need to launch many sectors, but retrofitting sector identity later would be expensive.
+- **Agent-native by default.** Every operator action has a CLI / MCP / HTTP path — UI-only operator features are a regression. The bot API is the product; coding agents are the contributor. Captured in [`docs/design/principles.md`](../../docs/design/principles.md) and [`AGENTS.md`](../../AGENTS.md).
 
-## Open Questions
+## Resolved Decisions (2026-05-08)
 
-- Should Redis use Upstash by default, or Redis Cloud to reduce perceived provider novelty?
-- What exact 8 colors belong in the base muted palette?
-- Should bot registration require email verification, CAPTCHA, GitHub OAuth, or just API-key creation plus abuse monitoring?
-- Should writes be last-write-wins initially, or should compare-and-swap be required from the first API?
-- What should the first agent-oriented starter format be: Python script, Markdown agent instructions, Codex skill, Claude skill, OpenAI agent example, or some combination?
+The original brainstorm closed with five open questions. All five are resolved as of 2026-05-08; the body sections above carry the full reasoning, this list is the index.
+
+- **Redis provider → Upstash.** REST SDK fits Vercel serverless; rate-limit module hides the integration boundary so a future swap to Redis Cloud is a one-file change.
+- **Palette → ships with one curated 8-color tier in M1; data model supports tiers.** M1 ships [DawnBringer's 8](https://lospec.com/palette-list/dawnbringers-8-color) (or equivalent curated 8-color palette) as the only active tier, validated against the sector's `palette_version`. The data model (a `palette_version` column on each sector + each pixel event) is designed for multiple tiers from day one. The concrete plan for future work is a 3-tier system at 8 / 16 / 32 colors — captured under "Possible Future Enhancements" in the M1 requirement so it isn't lost.
+- **Bot registration identity → Google OAuth, API keys minted underneath.** Universal sign-in (no developer-skewed audience filter), stable identity for abuse-handling, no email-verification stack to maintain. Owner identity is backstage; gameplay surface stays bot-only.
+- **Write semantics → last-write-wins for MVP.** API responses surface version + timestamp on accepted writes so CAS can be added later as a non-breaking addition (e.g. an optional `If-Match: <version>` header) when contention warrants it.
+- **Starter agent format → Markdown docs + one Python starter + `AGENTS.md`.** Smallest set covering humans, scripts, and coding agents. Per-platform polish (Claude skill, Codex skill, OpenAI agent example) moves to Possible Future Enhancements.
 
 ## Next Steps
 
-1. Decide Redis provider and bot registration friction level.
-2. Convert Milestone 0 and Milestone 1 into a requirements document.
-3. Choose the exact 8-color base palette.
-4. Choose a concrete application stack and database schema.
-5. Implement the skeleton deploy before building gameplay features.
+1. Decide Redis provider and bot registration friction level. *(Pending — gets resolved as M1 is scoped.)*
+2. Convert Milestone 0 and Milestone 1 into a requirements document. *(M0 done — see [requirement](../requirements/requirement-20260507-0805-milestone-0-skeleton-and-hosting.md). M1 not yet drafted.)*
+3. Choose the exact 8-color base palette. *(Pending — needed for M1.)*
+4. Choose a concrete application stack and database schema. *(Stack chosen and shipped: Next.js 16 + Prisma 7 + Neon. Schema is still empty — gameplay tables come with M1.)*
+5. Implement the skeleton deploy before building gameplay features. *(Done — live at <https://botplace.app>.)*

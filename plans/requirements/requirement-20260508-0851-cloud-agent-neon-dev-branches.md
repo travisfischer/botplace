@@ -1,12 +1,19 @@
 ---
 date: 2026-05-08
+shipped: 2026-05-08
 type: chore
 topic: cloud-agent-neon-dev-branches
-status: draft
+status: shipped
 planning_depth: standard
 ---
 
 # Requirement: Cloud-Agent-First Neon Dev Branch Workflow
+
+## Status
+
+**Shipped 2026-05-08.** Landed in PR #5 (`feat/cloud-agent-dev-workflow`). All scripts live under [`scripts/db/`](../../scripts/db/) and [`scripts/env/`](../../scripts/env/) and are exposed as `pnpm` scripts. The `dev-main` baseline branch is provisioned in Neon; bootstrap creates `dev-<8-hex>` children off it. `lib/prisma.ts` and `prisma.config.ts` both read the canonical `.env` (Next.js via `process.env`, Prisma CLI via `dotenv/config`). The migration guard reads `NEON_BRANCH_NAME` from process env first, then `.env`, and refuses both `main` and `dev-main` unless `NEON_ALLOW_BASELINE_MIGRATE=1`. Adapter remains `@prisma/adapter-pg` — TCP egress validated on the cloud-agent platforms in scope.
+
+Followed up in commit `bcc46e8` with `pnpm db:branch:cleanup` (the "stale-branch cleanup" item from Possible Future Enhancements — now shipped, not future).
 
 ## Problem / Outcome
 
@@ -41,29 +48,29 @@ The desired outcome is a small, scriptable convention: hosted Neon dev branches 
 
 ### Functional Requirements
 
-- [ ] One bootstrap command (e.g. `pnpm db:bootstrap`) creates or reuses a child branch off `dev-main`, materializes the canonical local env file, runs `prisma migrate deploy`, and prints DB-OK status.
-- [ ] Bootstrap is idempotent: if `NEON_BRANCH_NAME` already points at a non-baseline child branch, the same branch is reused and its connection URLs are refreshed.
-- [ ] Branch creation always parents off `dev-main`. The script refuses to parent off production.
-- [ ] Auto-generated branch names use a short random suffix, e.g. `dev-<8-char-random>`. Identity-in-the-name (per-agent or per-task tags) can come later.
-- [ ] Migration commands refuse to run against production or `dev-main` unless an explicit maintenance flag is passed.
-- [ ] `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct) for the selected child branch are written to the canonical local env file. `NEON_BRANCH_NAME` is also written so any subsequent script can name what it is touching.
-- [ ] A standalone DB health-check command verifies connectivity without requiring `pnpm dev` to be running.
-- [ ] Setup docs include the happy path for both cloud agents and human local sessions.
+- [x] One bootstrap command (e.g. `pnpm db:bootstrap`) creates or reuses a child branch off `dev-main`, materializes the canonical local env file, runs `prisma migrate deploy`, and prints DB-OK status.
+- [x] Bootstrap is idempotent: if `NEON_BRANCH_NAME` already points at a non-baseline child branch, the same branch is reused and its connection URLs are refreshed.
+- [x] Branch creation always parents off `dev-main`. The script refuses to parent off production.
+- [x] Auto-generated branch names use a short random suffix, e.g. `dev-<8-char-random>`. Identity-in-the-name (per-agent or per-task tags) can come later.
+- [x] Migration commands refuse to run against production or `dev-main` unless an explicit maintenance flag is passed.
+- [x] `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED` (direct) for the selected child branch are written to the canonical local env file. `NEON_BRANCH_NAME` is also written so any subsequent script can name what it is touching.
+- [x] A standalone DB health-check command verifies connectivity without requiring `pnpm dev` to be running.
+- [x] Setup docs include the happy path for both cloud agents and human local sessions.
 
 ### Non-Functional Requirements
 
-- [ ] Workflow is non-interactive once required env inputs are present.
-- [ ] Scripts fail fast with actionable messages when `NEON_API_KEY` or `NEON_PROJECT_ID` is missing or branch lookup fails.
-- [ ] Connection strings are masked or omitted from normal logs.
-- [ ] Implementation is small shell or TypeScript tooling — no long-lived service.
+- [x] Workflow is non-interactive once required env inputs are present.
+- [x] Scripts fail fast with actionable messages when `NEON_API_KEY` or `NEON_PROJECT_ID` is missing or branch lookup fails.
+- [x] Connection strings are masked or omitted from normal logs.
+- [x] Implementation is small shell or TypeScript tooling — no long-lived service.
 
 ## Acceptance Criteria
 
-- [ ] From a fresh clone with `NEON_API_KEY` and `NEON_PROJECT_ID` present, `pnpm install && pnpm db:bootstrap` ends with a working canonical local env file and a passing DB health check.
-- [ ] `pnpm db:migrate:dev --name <change>` succeeds on the child branch.
-- [ ] The same migration command refuses to run when `NEON_BRANCH_NAME=dev-main` (or the production branch).
-- [ ] `pnpm dev` starts and `/api/health` returns `{"status":"ok","db":"ok"}` against the selected child branch.
-- [ ] Docs explicitly state that hosted Neon branches are the default DB path; Docker/local Postgres are listed as possible future enhancements only.
+- [x] From a fresh clone with `NEON_API_KEY` and `NEON_PROJECT_ID` present, `pnpm install && pnpm db:bootstrap` ends with a working canonical local env file and a passing DB health check.
+- [x] `pnpm db:migrate:dev --name <change>` succeeds on the child branch.
+- [x] The same migration command refuses to run when `NEON_BRANCH_NAME=dev-main` (or the production branch).
+- [x] `pnpm dev` starts and `/api/health` returns `{"status":"ok","db":"ok"}` against the selected child branch.
+- [x] Docs explicitly state that hosted Neon branches are the default DB path; Docker/local Postgres are listed as possible future enhancements only.
 
 ## Suggested Implementation Shape
 
@@ -113,7 +120,7 @@ Suggested package scripts:
 
 - Local Docker/Postgres fallback for offline development.
 - Dedicated integration-test branch and reset script.
-- Stale-branch cleanup for old `dev-*` branches.
+- ~~Stale-branch cleanup for old `dev-*` branches.~~ **Shipped** — see `pnpm db:branch:cleanup` ([`scripts/db/branch-cleanup.sh`](../../scripts/db/branch-cleanup.sh)).
 - Branch-name identity tags (per-agent / per-task / per-PR).
 - Seed-data snapshots for fast branch initialization.
 - Neon HTTP-adapter path for cloud runtimes without TCP egress.

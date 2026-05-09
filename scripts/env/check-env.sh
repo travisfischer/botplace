@@ -51,6 +51,25 @@ section "Local env file ($ENV_FILE):"
 check DATABASE_URL
 check DATABASE_URL_UNPOOLED
 check NEON_BRANCH_NAME
+check BOTPLACE_API_KEY_PEPPER
+check AUTH_SECRET
+check GOOGLE_CLIENT_ID
+
+section "Process env (per-session, sourced via op run / shell export):"
+check GOOGLE_CLIENT_SECRET
+check ADMIN_TOKEN
+
+# Upstash: either canonical SDK names OR Vercel↔Upstash KV-style names.
+# In dev, neither is required (lib/rate-limit.ts falls back to in-memory).
+# In prod, one pair is required.
+section "Upstash rate limit (production-only — dev uses in-memory fallback):"
+upstash_url="${UPSTASH_REDIS_REST_URL:-${KV_REST_API_URL:-}}"
+upstash_token="${UPSTASH_REDIS_REST_TOKEN:-${KV_REST_API_TOKEN:-}}"
+if [ -n "$upstash_url" ] && [ -n "$upstash_token" ]; then
+  printf '  %s✓%s UPSTASH/KV REST URL + TOKEN present\n' "$GRN" "$CLR"
+else
+  printf '  %s○%s UPSTASH/KV REST URL + TOKEN absent  %s(dev fallback active)%s\n' "$DIM" "$CLR" "$DIM" "$CLR"
+fi
 
 printf '\n'
 if [ "$missing" -gt 0 ]; then

@@ -16,6 +16,13 @@ Vendor automation tokens for the services this app integrates with. Each token i
 - `op://Agents/Cloudflare API Token/credential`
 - `op://Agents/Neon/credential`
 - `op://Agents/Vercel/credential`
+- `op://Agents/Botplace API Key Pepper/credential` — production pepper (32 random bytes) used to HMAC bot API keys + owner PATs. Dev pepper is generated per Neon branch by `pnpm db:bootstrap` and lives only in `.env`.
+- `op://Agents/Botplace Auth Secret/credential` — Auth.js `AUTH_SECRET` for production session signing.
+- `op://Agents/Botplace Google OAuth/credential` — Google OAuth client secret. The non-secret client ID is stored alongside as a `client id` field for convenience.
+- `op://Agents/Botplace Upstash Redis/credential` — Upstash REST token. URL is stored alongside as a `rest url` field. Both are process-env-only — never written to `.env`.
+- `op://Agents/Botplace Admin Token/credential` — static operator token for `/api/v1/admin/...` endpoints.
+
+**Naming convention note:** item titles should not contain `(`, `)`, or other characters that 1Password CLI treats as special in `op://` references. Use `Botplace <Service>` (space-separated, no parens) so refs work as plain `op://Agents/<title>/credential`.
 
 Add an entry when introducing a new secret. If a needed item is missing from 1Password, ask the user to create it rather than inventing a path.
 
@@ -35,11 +42,18 @@ Add an entry when introducing a new secret. If a needed item is missing from 1Pa
 - `DATABASE_URL` — pooled, scoped to the selected dev branch
 - `DATABASE_URL_UNPOOLED` — unpooled, scoped to the selected dev branch
 - `NEON_BRANCH_NAME` — for "what am I touching" sanity in scripts
+- `BOTPLACE_API_KEY_PEPPER` — disposable per-branch dev pepper. Bootstrap preserves an existing value across re-runs (so previously-minted dev keys stay valid) and generates a fresh value on first run. Production pepper is **never** written here — it lives in Vercel project env + 1Password only.
+- `AUTH_SECRET` — disposable per-branch JWT signing secret for Auth.js. Same lifecycle as the pepper: bootstrap preserves on re-runs, generates fresh on first run. Production `AUTH_SECRET` lives in Vercel project env + 1Password only.
+- `GOOGLE_CLIENT_ID` — non-secret OAuth client ID. Tied to the production OAuth client in Google Cloud project `botplace-app`. Local dev sets it once by hand (or sources it via the Google Cloud Console); preview/production get it from Vercel project env.
+- `KV_REST_API_URL` (or `UPSTASH_REDIS_REST_URL`) — non-secret REST endpoint for the Upstash Redis instance (e.g. `https://<id>.upstash.io`). Production + preview get it from the Vercel↔Upstash integration with no custom prefix; the integration injects `KV_*` names matching Vercel's KV convention. Local dev doesn't need this — `lib/rate-limit.ts` falls back to an in-process memory bucket when no Upstash env is set. The TOKEN that pairs with this URL is **not** allowed in `.env` — see deny list.
 - Non-sensitive feature flags or app config
 
 **Not allowed** (must come from process env, supplied by an external adapter):
 
 - `NEON_API_KEY`, `VERCEL_TOKEN`
+- `KV_REST_API_TOKEN` / `UPSTASH_REDIS_REST_TOKEN` (the URL that pairs with it is non-secret — see allow list)
+- `AUTH_SECRET`, `GOOGLE_CLIENT_SECRET`, `ADMIN_TOKEN` (`GOOGLE_CLIENT_ID` is non-secret — see allow list)
+- Production `BOTPLACE_API_KEY_PEPPER` (only the disposable dev pepper is allowed — see above)
 - Any provider key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, future provider keys)
 - Any production credential that is not disposable branch-local connection material
 

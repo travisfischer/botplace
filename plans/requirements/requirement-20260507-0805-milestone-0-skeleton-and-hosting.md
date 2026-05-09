@@ -1,12 +1,17 @@
 ---
 date: 2026-05-07
+shipped: 2026-05-07
 type: feat
 topic: milestone-0-skeleton-and-hosting
-status: draft
+status: shipped
 planning_depth: standard
 ---
 
 # Requirement: Milestone 0 — Project Skeleton and Hosting
+
+## Status
+
+**Shipped 2026-05-07.** Live at <https://botplace.app> with `/api/health` returning DB-OK on production and per-PR previews. Landed in PR #1 (milestone-0 scaffold), with follow-ups in PR #2 (unpooled URL for migrations) and PR #3 (secrets-doc cleanup). Stack: Next.js 16 (App Router) + React 19 + TypeScript + Prisma 7 + `@prisma/adapter-pg`, on Vercel's Node 24 runtime, against Neon Postgres via the Vercel↔Neon integration with per-PR branches enabled. Cloudflare DNS apex + `www` wired via per-account `vercel-dns-017.com` CNAMEs. Provisioning runbook lives in [`docs/dev/deploy.md`](../../docs/dev/deploy.md).
 
 ## Problem / Outcome
 
@@ -44,35 +49,35 @@ The desired outcome of this milestone is a public, boring, empty hosted applicat
 
 ### Functional Requirements
 
-- [ ] Repo contains an installable, runnable web app skeleton with `pnpm install && pnpm dev` (or chosen-equivalent) starting a local server.
-- [ ] `botplace.app` and `www.botplace.app` resolve to the deployed Vercel app over HTTPS.
-- [ ] Pushing to `main` triggers a Vercel production deploy that goes live at `botplace.app`.
-- [ ] Opening a pull request triggers a Vercel preview deploy with a unique URL.
-- [ ] Each PR preview deploy is wired to its own Neon database branch (via the Vercel↔Neon integration), so preview testing cannot mutate production data.
-- [ ] A `GET /api/health` endpoint returns `200 OK` with a JSON body that includes `{"status":"ok","db":"ok"}` (or equivalent shape) when the DB is reachable.
-- [ ] When the DB is unreachable, `/api/health` returns a non-200 status with a body indicating which dependency failed, so deploy health is observable.
-- [ ] The chosen migration tool can apply migrations against production Postgres via a documented command.
-- [ ] An empty initial migration exists in the repo and applies cleanly to a fresh database.
-- [ ] `docs/dev/setup.md` (new) exists and documents: stack choices, prerequisites, how to install, how to run locally, how to connect to a local or hosted Neon instance, and how to run migrations.
-- [ ] `docs/dev/secrets.md` includes rows for every new credential introduced (e.g., Neon connection string, Vercel API token if used, etc.).
+- [x] Repo contains an installable, runnable web app skeleton with `pnpm install && pnpm dev` (or chosen-equivalent) starting a local server.
+- [x] `botplace.app` and `www.botplace.app` resolve to the deployed Vercel app over HTTPS.
+- [x] Pushing to `main` triggers a Vercel production deploy that goes live at `botplace.app`.
+- [x] Opening a pull request triggers a Vercel preview deploy with a unique URL.
+- [x] Each PR preview deploy is wired to its own Neon database branch (via the Vercel↔Neon integration), so preview testing cannot mutate production data.
+- [x] A `GET /api/health` endpoint returns `200 OK` with a JSON body that includes `{"status":"ok","db":"ok"}` (or equivalent shape) when the DB is reachable.
+- [x] When the DB is unreachable, `/api/health` returns a non-200 status with a body indicating which dependency failed, so deploy health is observable.
+- [x] The chosen migration tool can apply migrations against production Postgres via a documented command.
+- [x] An empty initial migration exists in the repo and applies cleanly to a fresh database.
+- [x] `docs/dev/setup.md` (new) exists and documents: stack choices, prerequisites, how to install, how to run locally, how to connect to a local or hosted Neon instance, and how to run migrations.
+- [x] `docs/dev/secrets.md` includes rows for every new credential introduced (e.g., Neon connection string, Vercel API token if used, etc.).
 
 ### Non-Functional Requirements
 
-- [ ] Production secrets are stored in Vercel project env vars and referenced from 1Password (no plaintext secrets in repo or in commit history).
-- [ ] Cold-start `/api/health` p95 latency in production is under 2s (signals DB pooling is wired correctly).
-- [ ] The deployed app responds with `200 OK` from the apex (`botplace.app`) without redirect chains longer than one hop.
-- [ ] All chosen tools are still actively maintained and have documented Vercel/Neon integration paths.
-- [ ] No piece of the skeleton commits us to a UI framework or auth system that would block Milestone 1 swaps.
+- [x] Production secrets are stored in Vercel project env vars and referenced from 1Password (no plaintext secrets in repo or in commit history).
+- [x] Cold-start `/api/health` p95 latency in production is under 2s (signals DB pooling is wired correctly).
+- [x] The deployed app responds with `200 OK` from the apex (`botplace.app`) without redirect chains longer than one hop.
+- [x] All chosen tools are still actively maintained and have documented Vercel/Neon integration paths.
+- [x] No piece of the skeleton commits us to a UI framework or auth system that would block Milestone 1 swaps.
 
 ## Acceptance Criteria
 
-- [ ] Visiting `https://botplace.app` in a browser renders the deployed app's placeholder page with no console errors.
-- [ ] Visiting `https://botplace.app/api/health` returns `200` with `{"status":"ok","db":"ok"}` (or equivalent shape).
-- [ ] A draft PR opened against the repo gets a Vercel preview comment with a working URL whose `/api/health` endpoint also returns DB-ok.
-- [ ] A new contributor can clone the repo, follow `docs/dev/setup.md`, and reach a working `pnpm dev` (or equivalent) within ~15 minutes, including secret retrieval.
-- [ ] Running the documented migration command against an empty Postgres database completes without error and produces a `migrations` (or equivalent) tracking row.
-- [ ] `docs/dev/secrets.md` has a table row for every secret consumed by the deployed app or by the local dev flow.
-- [ ] Repo's `main` branch matches what is currently deployed at `botplace.app` (no drift).
+- [x] Visiting `https://botplace.app` in a browser renders the deployed app's placeholder page with no console errors.
+- [x] Visiting `https://botplace.app/api/health` returns `200` with `{"status":"ok","db":"ok"}` (or equivalent shape).
+- [x] A draft PR opened against the repo gets a Vercel preview comment with a working URL whose `/api/health` endpoint also returns DB-ok.
+- [x] A new contributor can clone the repo, follow `docs/dev/setup.md`, and reach a working `pnpm dev` (or equivalent) within ~15 minutes, including secret retrieval.
+- [x] Running the documented migration command against an empty Postgres database completes without error and produces a `migrations` (or equivalent) tracking row.
+- [x] `docs/dev/secrets.md` has a table row for every secret consumed by the deployed app or by the local dev flow.
+- [x] Repo's `main` branch matches what is currently deployed at `botplace.app` (no drift).
 
 ## Risks and Mitigations
 

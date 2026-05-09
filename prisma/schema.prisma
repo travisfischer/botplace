@@ -1,3 +1,7 @@
+// Schema follows docs/design/database-conventions.md:
+// Postgres lower_snake_case via @map / @@map; Prisma camelCase / PascalCase;
+// FK columns as <entity>_id; cascade policy = Restrict on audit-relevant edges.
+
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -5,4 +9,128 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum BotStatus {
+  ACTIVE
+  REVOKED
+}
+
+model Owner {
+  id                   String                     @id @default(cuid())
+  googleSub            String                     @unique @map("google_sub") // Google OAuth `sub`
+  email                String                                                // PII
+  displayName          String                     @map("display_name")       // PII
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  bots                 Bot[]
+  personalAccessTokens OwnerPersonalAccessToken[]
+
+  @@map("owners")
+}
+
+model OwnerPersonalAccessToken {
+  id         String    @id @default(cuid())
+  ownerId    String    @map("owner_id")
+  owner      Owner     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  tokenHash  String    @unique @map("token_hash") // HMAC-SHA-256(token, BOTPLACE_API_KEY_PEPPER)
+  prefix     String                               // "bp_pat_<8-char-prefix>" for log display
+  name       String                               // owner-supplied label, e.g. "my-laptop"
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  @@index([ownerId])
+  @@map("owner_personal_access_tokens")
+}
+
+model Bot {
+  id        String       @id @default(cuid())
+  ownerId   String       @map("owner_id")
+  owner     Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  name      String
+  status    BotStatus    @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  apiKeys   BotApiKey[]
+  events    PixelEvent[]
+
+  @@unique([ownerId, name])
+  @@index([ownerId])
+  @@map("bots")
+}
+
+model BotApiKey {
+  id         String       @id @default(cuid())
+  botId      String       @map("bot_id")
+  bot        Bot          @relation(fields: [botId], references: [id], onDelete: Restrict)
+  keyHash    String       @unique @map("key_hash") // HMAC-SHA-256(key, BOTPLACE_API_KEY_PEPPER) — uniqueness is a security invariant
+  prefix     String                                // "bp_live_<8-char-prefix>" for log display
+  createdAt  DateTime     @default(now()) @map("created_at")
+  revokedAt  DateTime?    @map("revoked_at")
+  lastUsedAt DateTime?    @map("last_used_at")
+  events     PixelEvent[]
+
+  @@index([botId])
+  @@map("bot_api_keys")
+}
+
+model Sector {
+  id             String        @id                              // slug, e.g. "sector-1"
+  name           String
+  width          Int
+  height         Int
+  paletteVersion Int           @default(1) @map("palette_version")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  chunks         SectorChunk[]
+  events         PixelEvent[]
+
+  @@map("sectors")
+}
+
+model SectorChunk {
+  sectorId  String   @map("sector_id")
+  sector    Sector   @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  chunkX    Int      @map("chunk_x")
+  chunkY    Int      @map("chunk_y")
+  data      Bytes                      // packed palette indices, 1 byte per pixel
+  version   BigInt   @default(0)       // monotonic per chunk; SELECT FOR UPDATE inside tx
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([sectorId, chunkX, chunkY])
+  @@map("sector_chunks")
+}
+
+model PixelEvent {
+  id                BigInt    @id @default(autoincrement())
+  requestId         String    @map("request_id")           // joins HTTP log + tx + event log
+  sectorId          String    @map("sector_id")
+  sector            Sector    @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  x                 Int
+  y                 Int
+  color             Int                                    // palette index
+  paletteVersion    Int       @map("palette_version")     // copied from sector at write time
+  botId             String    @map("bot_id")
+  bot               Bot       @relation(fields: [botId], references: [id], onDelete: Restrict)
+  apiKeyId          String    @map("api_key_id")          // durable credential audit across rotations
+  apiKey            BotApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+  chunkVersionAfter BigInt    @map("chunk_version_after")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  @@index([sectorId, id])                                  // deterministic replay ordering
+  @@index([sectorId, createdAt])                           // time-window queries
+  @@index([botId, createdAt])
+  @@index([apiKeyId])
+  @@map("pixel_events")
+}
+
+model AdminAuditEvent {
+  id          BigInt   @id @default(autoincrement())
+  requestId   String   @map("request_id")
+  action      String                                       // e.g. "revoke_bot_key"
+  targetId    String?  @map("target_id")                   // bot id, key id, etc.
+  payloadJson Json     @map("payload_json")                // before/after snapshot
+  sourceIp    String   @map("source_ip")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([action, createdAt])
+  @@map("admin_audit_events")
 }
