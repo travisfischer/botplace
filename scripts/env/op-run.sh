@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/env/op-run.sh
 #
-# Run any command with 1Password-sourced secrets in process env. Reads
+# Run a pnpm script with 1Password-sourced secrets in process env. Reads
 # `op.env` at the repo root (the env-template of `op://` references) and
 # hands every variable to the inner command via `op run --env-file=`.
 #
@@ -9,13 +9,16 @@
 # need this wrapper — their platform injects process env directly.
 #
 # Usage:
-#   ./scripts/env/op-run.sh <cmd> [args...]
-#   pnpm op <cmd> [args...]            # equivalent (package.json shortcut)
+#   pnpm op <pnpm-script> [args...]
 #
 # Examples:
-#   pnpm op pnpm db:bootstrap
-#   pnpm op pnpm dev
-#   pnpm op pnpm admin:revoke-key <key-id>
+#   pnpm op db:bootstrap
+#   pnpm op dev
+#   pnpm op admin:revoke-key <key-id>
+#   pnpm op env:check
+#
+# Escape hatch for non-pnpm commands (rare):
+#   op run --env-file=op.env -- <any-command>
 #
 # See docs/dev/setup.md § Running commands with secrets for the full matrix.
 
@@ -40,8 +43,8 @@ if ! op whoami >/dev/null 2>&1; then
 fi
 
 if [ "$#" -eq 0 ]; then
-  printf 'usage: %s <cmd> [args...]\n' "$(basename "$0")" >&2
+  printf 'usage: pnpm op <pnpm-script> [args...]\n' >&2
   exit 2
 fi
 
-exec op run --env-file="$ENV_TEMPLATE" -- "$@"
+exec op run --env-file="$ENV_TEMPLATE" -- pnpm "$@"

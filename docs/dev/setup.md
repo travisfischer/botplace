@@ -10,22 +10,28 @@ This is the default path for a human developer running Botplace on a laptop. It 
 # One-time machine setup
 brew install fnm 1password-cli
 corepack enable
-fnm install                       # picks up .nvmrc → Node 24
-eval $(op signin)                 # sign in to 1Password
+fnm install                  # picks up .nvmrc → Node 24
+eval $(op signin)            # sign in to 1Password
 
 # One-time repo setup
 pnpm install
-pnpm op pnpm db:bootstrap         # creates a Neon dev branch, writes .env, runs migrations
+pnpm op db:bootstrap         # creates a Neon dev branch, writes .env, runs migrations
 
 # Daily
-pnpm op pnpm dev                  # start the dev server with secrets in process env
+pnpm op dev                  # start the dev server with secrets in process env
 ```
 
 Then open <http://localhost:3000>. The viewer loads `sector-1` (which will be empty in your dev branch until you write some pixels).
 
-**Why `pnpm op` in front of everything?** It's a thin wrapper that runs `op run --env-file=op.env -- <cmd>`, which pulls the secrets named in [`op.env`](../../op.env) from 1Password and injects them into the process env of the inner command. The wrapper script is at `scripts/env/op-run.sh`. Using it consistently means you never have to remember which commands need which secrets.
+**Why `pnpm op` in front of everything?** It's a thin wrapper that runs `op run --env-file=op.env -- pnpm <script>`, which pulls the secrets named in [`op.env`](../../op.env) from 1Password and injects them into the process env of the inner command. The wrapper script is at `scripts/env/op-run.sh`. Using it consistently means you never have to remember which commands need which secrets.
 
-Plain `pnpm <cmd>` still works for things that don't need process-env secrets (e.g. `pnpm lint`, `pnpm test`, `pnpm typecheck`). When in doubt, prefix with `pnpm op` — it's a no-op for commands that don't read the env vars it injects.
+Plain `pnpm <cmd>` still works for things that don't need process-env secrets (e.g. `pnpm lint`, `pnpm test`, `pnpm typecheck`). When in doubt, prefix with `pnpm op` — it's a no-op for scripts that don't read the env vars it injects.
+
+For the rare case where you need to wrap a non-pnpm command with 1Password secrets, fall through to direct `op run`:
+
+```bash
+op run --env-file=op.env -- <any-command>
+```
 
 ## Quickstart (cloud-agent setup, no 1Password)
 
@@ -54,9 +60,9 @@ The `pnpm <cmd>` form is the same as the local-streaming path's inner command �
 | `pnpm admin:*` | no | `ADMIN_TOKEN` (+ `BOTPLACE_URL` for non-localhost) | `op.env` → 1Password |
 | `pnpm bot:*`, `pnpm pat:*` | yes | `BOTPLACE_PAT` (after you mint one via the UI) | shell export, not in op.env |
 
-In the local-streaming setup, just run `pnpm op pnpm <cmd>` for any row marked "no" in the second column. In the cloud-agent setup, the platform's already injected those env vars, so `pnpm <cmd>` is enough.
+In the local-streaming setup, just run `pnpm op <cmd>` for any row marked "no" in the second column. In the cloud-agent setup, the platform's already injected those env vars, so `pnpm <cmd>` is enough.
 
-Run `pnpm op pnpm env:check` to confirm everything resolves correctly — it reports which env vars are present by name, never by value.
+Run `pnpm op env:check` to confirm everything resolves correctly — it reports which env vars are present by name, never by value.
 
 ## Stack
 
@@ -151,7 +157,7 @@ The recommended path is a hosted Neon dev branch off the shared `dev-main` basel
 
 ```bash
 # Local-streaming setup (1Password):
-pnpm op pnpm db:bootstrap
+pnpm op db:bootstrap
 
 # Cloud-agent setup (platform already injected NEON_*):
 pnpm db:bootstrap
@@ -176,7 +182,7 @@ Production uses Upstash Redis for rate limiting. Local dev has **no Upstash depe
 | `pnpm lint` | Run ESLint |
 | `pnpm typecheck` | Run `tsc --noEmit` |
 | `pnpm env:check` | Report required env-var presence by name; exits non-zero if any required input is missing |
-| `pnpm op <cmd>` | Wrap any command with 1Password-sourced secrets via `op run --env-file=op.env -- <cmd>`. Use this in local-streaming setup; cloud-agent setups skip it because the platform injects env directly |
+| `pnpm op <pnpm-script>` | Run a pnpm script with 1Password-sourced secrets via `op run --env-file=op.env -- pnpm <script>`. Use this in local-streaming setup; cloud-agent setups skip it because the platform injects env directly |
 | `pnpm db:bootstrap` | Create or reuse a Neon dev branch off `dev-main`, write `.env`, run migrations |
 | `pnpm db:check` | Standalone DB connectivity health check (no Next.js dev server required) |
 | `pnpm db:branch:cleanup` | Delete disposable `dev-<random>` Neon branches (protects `main`, `dev-main`, and the branch in your current `.env`). `--dry-run` to preview, `--yes` to skip the prompt |
