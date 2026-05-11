@@ -19,6 +19,10 @@ import {
 import { loadSectorMeta } from "@/src/sectors";
 
 const CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
+// See lib comment in manifest/route.ts — Vercel strips s-maxage from
+// plain Cache-Control on dynamic route handlers, so explicit CDN
+// directive is required for edge caching to kick in.
+const CDN_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
 
 export async function GET(
   request: Request,
@@ -83,7 +87,11 @@ export async function GET(
     });
 
     return Response.json(result.meta, {
-      headers: { "Cache-Control": CACHE_CONTROL, ...rlHeaders },
+      headers: {
+        "Cache-Control": CACHE_CONTROL,
+        "CDN-Cache-Control": CDN_CACHE_CONTROL,
+        ...rlHeaders,
+      },
     });
   } catch (err) {
     log("error", {

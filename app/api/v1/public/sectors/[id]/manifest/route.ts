@@ -19,7 +19,15 @@ import {
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
 
+// Browser cache hint (Vercel may downgrade this for dynamic routes —
+// that's fine, the edge cache is the one that matters for our scaling
+// story).
 const CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=5";
+// Vercel's CDN respects CDN-Cache-Control on dynamic route handlers
+// without downgrading. Without this, plain Cache-Control is stripped
+// of s-maxage/swr and the edge never caches — every viewer poll would
+// hit origin. Same TTLs as CACHE_CONTROL.
+const CDN_CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=5";
 
 export async function GET(
   request: Request,
@@ -95,7 +103,11 @@ export async function GET(
     });
 
     return Response.json(body, {
-      headers: { "Cache-Control": CACHE_CONTROL, ...rlHeaders },
+      headers: {
+        "Cache-Control": CACHE_CONTROL,
+        "CDN-Cache-Control": CDN_CACHE_CONTROL,
+        ...rlHeaders,
+      },
     });
   } catch (err) {
     log("error", {
