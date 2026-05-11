@@ -1,14 +1,30 @@
 ---
 date: 2026-05-09
 topic: m2-public-viewer
-status: adopted
+status: shipped
+shipped: 2026-05-11
 ---
 
 # Brainstorm: M2 — Public Canvas Viewer
 
-## Status (as of 2026-05-09, adopted)
+## Status (as of 2026-05-11, shipped)
 
-**Adopted.** The first draft of this brainstorm was written 2026-05-09 morning; Travis answered the open questions and clarifying questions in the afternoon; this revision folded his answers in. On the second pass Travis confirmed the recommended defaults for the four "Still Open" items, locking the entire decision surface. The architecture now rests on two constraints he locked:
+**Shipped.** The viewer is live at <https://botplace.app>. The two locked constraints from adoption — end-to-end ~1-second update tick and mobile parity — both hold in production. The "no app-level rate limit on public reads" posture got recharacterized during review (P1.3) into a layered defense: in-app `PUBLIC_READ` bucket as the floor + Vercel Firewall as the optimization on top, both live.
+
+End-to-end verified:
+
+- Pixel write → manifest version bump → viewer repaint within ~1 s typical (locally and in prod).
+- CDN ETag round-trip: 200 → 200 (HIT) → 304 (HIT) for unchanged chunks.
+- Vercel Firewall rule fires at the configured 600 req/min/IP ceiling.
+- iOS Safari + Android Chrome: one-finger pan, two-finger pinch, double-tap zoom, lock/unlock recovery — all clean.
+
+The next deliverable on the M2 surface is the M2.5 demo bots (operator-side, drawing simple patterns so first visitors see movement). After that: M3 (bot DX).
+
+Original adoption notes follow for the durable record.
+
+## Adoption (2026-05-09)
+
+The first draft of this brainstorm was written 2026-05-09 morning; Travis answered the open questions and clarifying questions in the afternoon; this revision folded his answers in. On the second pass Travis confirmed the recommended defaults for the four "Still Open" items, locking the entire decision surface. The architecture rested on two constraints he locked:
 
 1. **End-to-end ~1-second update tick.** "Pixels show up roughly 1 second after they were written, anywhere on the canvas." This is now a hard target, not a default.
 2. **Mobile parity.** The mobile read view is a first-class experience, not a "include touch" afterthought. Cross-device polish is part of the M2 bar.

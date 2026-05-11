@@ -6,9 +6,9 @@ status: adopted
 
 # Brainstorm: MVP Scope and Hosting
 
-## Status (as of 2026-05-09)
+## Status (as of 2026-05-11)
 
-The recommendations in this brainstorm were adopted and converted into requirements. Execution is well underway — Milestones 0 and 1 (plus M1 polish) are shipped; M2–M5 still pending.
+The recommendations in this brainstorm were adopted and converted into requirements. Execution is well underway — Milestones 0, 1 (plus M1 polish), and 2 are shipped; M3–M5 still pending.
 
 **Shipped:**
 
@@ -17,8 +17,9 @@ The recommendations in this brainstorm were adopted and converted into requireme
 - **Env and secrets contract** → [requirement](../requirements/requirement-20260508-0900-env-and-secrets-mvp.md). Single canonical `.env`, Vercel as deploy source-of-truth, process env as the script interface, 1Password for human access.
 - **Milestone 1 — Bot Registration, Pixel API, and Event Log** → [requirement](../requirements/requirement-20260508-1121-milestone-1-bot-registration-and-pixel-api.md). Auth.js v5 + Google OAuth, HMAC-SHA-256 + pepper credentials, lazy-allocated chunked canvas state, append-only `PixelEvent` log, Upstash token-bucket rate limiting (with in-process memory dev fallback), structured JSON logs, atomic key rotation, admin-revoke endpoint. End-to-end verified in prod.
 - **M1 Polish — defense-in-depth, tests, CI, operator artifacts** → [requirement](../requirements/requirement-20260508-1900-m1-polish-and-defense-in-depth.md). Tagged auth resolvers, full credential-lifecycle audit trail, pixel-write-tx + auth-invariants tests, GitHub Actions CI, owner-mutation rate limits, `pnpm bot:*` / `pnpm pat:*` shell wrappers, admin doc, probe markdowns, `pnpm events:export`.
+- **Milestone 2 — Public Canvas Viewer** → [requirement](../requirements/requirement-20260509-1711-milestone-2-public-viewer.md). Three public read endpoints under `/api/v1/public/...` with CDN edge caching, 1-Hz polling viewer with manifest-diff, Canvas-2D + CSS pan/zoom, mobile parity, Vercel Firewall rules, agent-native helpers (`pnpm sector:create-probe`, `pnpm dev:seed-bot`). End-to-end verified in prod 2026-05-11. The bot API got matching manifest + ETag primitives so agents can mirror sectors without going through the human read path.
 
-**Pending (Milestones 2–5):** no requirements docs yet. Public viewer (M2), bot DX (M3), ops hardening (M4), realtime decision (M5).
+**Pending (Milestones 3–5):** no requirements docs yet. Bot DX (M3), ops hardening (M4), realtime decision (M5). M2.5 demo bots (operator-side, drawing simple patterns so first visitors see movement) sit between M2 and M3.
 
 **Open questions resolved 2026-05-08** (see Resolved Decisions section below): Redis provider, palette selection method, bot registration identity, write semantics, and starter-bot format are all decided. The starter palette landed as DawnBringer's 8-color set in M1, with the registry slot for future tier rollouts captured but unbuilt.
 
