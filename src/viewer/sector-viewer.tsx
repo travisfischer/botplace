@@ -11,6 +11,7 @@
 
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SectorCanvas, type CanvasHandle } from "./canvas";
@@ -48,6 +49,12 @@ export function SectorViewer({ meta }: SectorViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHandleRef = useRef<CanvasHandle>(null);
   const cacheRef = useRef<ChunkCache>(new ChunkCache());
+  // Opt-in debug visuals via `?debug` (or `?debug=grid`). Renders an
+  // outline around the world bounds + per-chunk grid lines so it's
+  // obvious where the canvas lives at any zoom level. Off by default
+  // so production looks clean.
+  const searchParams = useSearchParams();
+  const debugGrid = searchParams?.has("debug") ?? false;
   const [transform, setTransform] = useState<Transform>({
     tx: 0,
     ty: 0,
@@ -303,7 +310,29 @@ export function SectorViewer({ meta }: SectorViewerProps) {
         paletteHex={meta.palette}
         defaultColor={meta.default_color}
         transform={transform}
+        debugGrid={debugGrid}
       />
+      {debugGrid && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: meta.width,
+            height: meta.height,
+            transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
+            transformOrigin: "0 0",
+            pointerEvents: "none",
+            // Two repeating gradients = vertical + horizontal grid lines
+            // every `chunk_size` world-pixels. Semi-transparent magenta
+            // so painted pixels still read through.
+            backgroundImage: `linear-gradient(to right, rgba(255,0,255,0.35) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,0,255,0.35) 1px, transparent 1px)`,
+            backgroundSize: `${meta.chunk_size}px ${meta.chunk_size}px`,
+            backgroundPosition: "0 0",
+          }}
+        />
+      )}
       {!healthy && (
         <div role="status" aria-live="polite" style={stalePillStyle}>
           Reconnecting…

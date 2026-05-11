@@ -37,6 +37,13 @@ interface CanvasProps {
   paletteHex: readonly string[];
   defaultColor: number;
   transform: Transform;
+  /**
+   * When true, paints a magenta 1-CSS-pixel border around the world
+   * bounds and 1-CSS-pixel chunk-boundary grid lines into the canvas
+   * bitmap on every chunk repaint. Opt-in via the viewer's `?debug`
+   * query param — not part of the production paint surface.
+   */
+  debugGrid?: boolean;
 }
 
 function hexToRgbaU32(hex: string): number {
@@ -53,7 +60,15 @@ function hexToRgbaU32(hex: string): number {
 
 export const SectorCanvas = forwardRef<CanvasHandle, CanvasProps>(
   function SectorCanvas(
-    { width, height, chunkSize, paletteHex, defaultColor, transform },
+    {
+      width,
+      height,
+      chunkSize,
+      paletteHex,
+      defaultColor,
+      transform,
+      debugGrid = false,
+    },
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -130,6 +145,14 @@ export const SectorCanvas = forwardRef<CanvasHandle, CanvasProps>(
           // Sub-pixel hinting off; we want sharp pixel boundaries.
           // @ts-expect-error -- vendor prefix not in the TS lib types.
           MozImageRendering: "crisp-edges",
+          // Debug outline around the world bounds. `outline` is painted
+          // outside the canvas box and transforms with it, so the line
+          // is always visible regardless of zoom. Chunk-boundary grid
+          // is rendered separately by the sector-viewer overlay so it
+          // can sit on top of painted pixels.
+          ...(debugGrid
+            ? { outline: "1px solid magenta", outlineOffset: 0 }
+            : {}),
         }}
         // The wrapper handles pointer events; the canvas itself doesn't
         // need to be interactive.
