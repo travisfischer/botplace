@@ -90,6 +90,16 @@ export function SectorViewer({ meta }: SectorViewerProps) {
   useEffect(() => {
     const cache = cacheRef.current;
 
+    // On (re)mount, repaint any chunks already in the cache. The cache is
+    // held in a useRef and survives StrictMode's mount→cleanup→remount
+    // cycle (and HMR), but the canvas's bitmap is freshly initialized on
+    // every remount. Without this step, the cache's "I already have
+    // version N for this chunk" check causes the next poll to short-
+    // circuit and the canvas stays at the default fill color forever.
+    for (const [cx, cy, cached] of cache.entries()) {
+      canvasHandleRef.current?.repaintChunk(cx, cy, cached.bytes);
+    }
+
     const tick = async (signal: AbortSignal) => {
       const manifest = await fetchManifest(meta.id, signal);
       if (signal.aborted) return;
