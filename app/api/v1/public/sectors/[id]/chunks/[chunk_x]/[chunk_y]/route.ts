@@ -28,6 +28,10 @@ import {
 import { CHUNK_BYTES, CHUNK_SIZE } from "@/src/pixels";
 
 const CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=30";
+// See lib comment in manifest/route.ts — Vercel strips s-maxage from
+// plain Cache-Control on dynamic route handlers, so explicit CDN
+// directive is required for edge caching to kick in.
+const CDN_CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=30";
 
 // Strict canonical form: zero, or a 1-4 digit positive integer. No
 // leading zeros, no signs, no scientific/hex/binary, no decimals.
@@ -145,6 +149,7 @@ export async function GET(
         headers: {
           ETag: etag,
           "Cache-Control": CACHE_CONTROL,
+          "CDN-Cache-Control": CDN_CACHE_CONTROL,
           ...rlHeaders,
         },
       });
@@ -167,6 +172,7 @@ export async function GET(
           ETag: etag,
           "X-Chunk-Version": "0",
           "Cache-Control": CACHE_CONTROL,
+          "CDN-Cache-Control": CDN_CACHE_CONTROL,
           ...rlHeaders,
         },
       });
@@ -189,6 +195,7 @@ export async function GET(
         "X-Chunk-Version": versionStr,
         "X-Chunk-Updated-At": chunk.updatedAt.toISOString(),
         "Cache-Control": CACHE_CONTROL,
+        "CDN-Cache-Control": CDN_CACHE_CONTROL,
         ...rlHeaders,
       },
     });
