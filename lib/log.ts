@@ -17,7 +17,12 @@ export type AuthFailureReason =
   | "wrong_credential_type"
   | "server_misconfigured";
 
-export type AuthType = "session" | "pat" | "bot_key" | "admin_token";
+export type AuthType =
+  | "session"
+  | "pat"
+  | "bot_key"
+  | "admin_token"
+  | "public";
 
 export interface LogFields {
   request_id?: string;
@@ -35,7 +40,7 @@ export interface LogFields {
   bot_id?: string;
   owner_id?: string;
   sector_id?: string;
-  rate_limit_scope?: "bot" | "ip" | "read" | "owner_write";
+  rate_limit_scope?: "bot" | "ip" | "read" | "owner_write" | "public_read";
   latency_ms?: number;
   /** BigInt serialized as string — JSON.stringify can't encode BigInt directly. */
   chunk_version_after?: string;

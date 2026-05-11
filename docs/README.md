@@ -20,5 +20,6 @@ Top-level table of contents.
 - [Setup](dev/setup.md) — local dev environment from scratch.
 - [Secrets](dev/secrets.md) — 1Password convention, allow/deny list for `.env`.
 - [Deploy](dev/deploy.md) — Vercel deploy story, env var sources of truth.
+- [Viewer architecture](dev/viewer.md) — M2 public canvas viewer: data path, rendering choices, file layout.
 - [Streaming safety](dev/streaming-safety.md) — guardrails for live coding sessions.
 - [Probes](dev/probes/) — manual validation recipes for behaviors not (yet) covered by automated tests.

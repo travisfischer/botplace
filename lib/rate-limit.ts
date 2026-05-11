@@ -72,12 +72,27 @@ const OWNER_WRITE: BucketConfig = {
   refillIntervalString: "2 s",
   prefix: "botplace:rl:owner_write",
 };
+// Per-IP cap on anonymous public reads (M2 viewer endpoints). Sized
+// generously so a legitimate viewer polling the manifest at 1Hz + an
+// occasional chunk fetch never approaches the ceiling, while a
+// determined scraper opening many paths in parallel does. 60/sec/IP
+// (= 3600/min) is the in-app floor; the higher Vercel Firewall edge
+// rule (600/min/IP per `docs/admin/v1.md`) sits *above* this, not
+// below — i.e. attacks that bypass the edge for any reason still hit
+// this app-side limit. M2 review P1.3.
+const PUBLIC_READ: BucketConfig = {
+  capacity: 60,
+  refillIntervalMs: 1_000,
+  refillIntervalString: "1 s",
+  prefix: "botplace:rl:public_read",
+};
 
 interface LimiterCache {
   bot: Limiter;
   ip: Limiter;
   read: Limiter;
   ownerWrite: Limiter;
+  publicRead: Limiter;
 }
 
 let cached: LimiterCache | null = null;
@@ -158,6 +173,7 @@ function getLimiters(): LimiterCache {
       ip: adaptUpstashLimiter(redis, WRITE_IP),
       read: adaptUpstashLimiter(redis, READ),
       ownerWrite: adaptUpstashLimiter(redis, OWNER_WRITE),
+      publicRead: adaptUpstashLimiter(redis, PUBLIC_READ),
     };
     return cached;
   }
@@ -183,6 +199,10 @@ function getLimiters(): LimiterCache {
     ownerWrite: new MemoryTokenBucket(
       OWNER_WRITE.capacity,
       OWNER_WRITE.refillIntervalMs,
+    ),
+    publicRead: new MemoryTokenBucket(
+      PUBLIC_READ.capacity,
+      PUBLIC_READ.refillIntervalMs,
     ),
   };
   return cached;
@@ -225,6 +245,17 @@ export type OwnerWriteRateLimitOutcome =
       reason: "rate_limited";
       scope: "owner_write";
       ownerWrite: BucketState;
+      retryAfterSeconds: number;
+    }
+  | { ok: false; reason: "rate_limit_unavailable" };
+
+export type PublicReadRateLimitOutcome =
+  | { ok: true; publicRead: BucketState }
+  | {
+      ok: false;
+      reason: "rate_limited";
+      scope: "public_read";
+      publicRead: BucketState;
       retryAfterSeconds: number;
     }
   | { ok: false; reason: "rate_limit_unavailable" };
@@ -343,6 +374,39 @@ export async function checkOwnerWriteRateLimit(
   }
 }
 
+/**
+ * Per-IP rate limit on anonymous public reads. The Vercel Firewall edge
+ * rule (per `docs/admin/v1.md`) is the first line; this app-level bucket
+ * is the floor that catches anything bypassing the edge (Firewall outage,
+ * regional config drift, internal traffic). 60/sec/IP is well above any
+ * legitimate viewer's burst.
+ */
+export async function checkPublicReadRateLimit(
+  ip: string,
+): Promise<PublicReadRateLimitOutcome> {
+  let limiters: LimiterCache;
+  try {
+    limiters = getLimiters();
+  } catch {
+    return { ok: false, reason: "rate_limit_unavailable" };
+  }
+  try {
+    const result = await limiters.publicRead.limit(ip);
+    if (!result.success) {
+      return {
+        ok: false,
+        reason: "rate_limited",
+        scope: "public_read",
+        publicRead: toState(result),
+        retryAfterSeconds: retryAfter(result.reset),
+      };
+    }
+    return { ok: true, publicRead: toState(result) };
+  } catch {
+    return { ok: false, reason: "rate_limit_unavailable" };
+  }
+}
+
 /** Shape the four `X-RateLimit-*` headers per the M1 API contract. */
 export function pixelWriteRateLimitHeaders(
   bot: BucketState,
@@ -381,4 +445,68 @@ export function ownerWriteRateLimitHeaders(
   };
   if (retryAfter !== undefined) headers["Retry-After"] = String(retryAfter);
   return headers;
+}
+
+export function publicReadRateLimitHeaders(
+  publicRead: BucketState,
+  retryAfter?: number,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-RateLimit-Remaining-Public-Read": String(publicRead.remaining),
+    "X-RateLimit-Reset-Public-Read": String(Math.floor(publicRead.reset / 1000)),
+  };
+  if (retryAfter !== undefined) headers["Retry-After"] = String(retryAfter);
+  return headers;
+}
+
+/**
+ * Shared 429/503 response builder for the public read endpoints. Every
+ * public route handler runs the rate-limit check at the top — this
+ * function turns a non-ok outcome into the JSON Response with the right
+ * headers and a structured log line.
+ */
+export function publicReadRateLimitResponse(
+  outcome: Exclude<PublicReadRateLimitOutcome, { ok: true }>,
+  context: { requestId: string; path: string; sectorId?: string; startedAt: number },
+): Response {
+  if (outcome.reason === "rate_limit_unavailable") {
+    log("error", {
+      request_id: context.requestId,
+      path: context.path,
+      status: 503,
+      error_slug: "rate_limit_unavailable",
+      auth_type: "public",
+      sector_id: context.sectorId,
+      dependency: "upstash",
+      latency_ms: Date.now() - context.startedAt,
+    });
+    return Response.json(
+      { error: "rate_limit_unavailable", request_id: context.requestId },
+      { status: 503 },
+    );
+  }
+  log("warn", {
+    request_id: context.requestId,
+    path: context.path,
+    status: 429,
+    error_slug: "rate_limited",
+    rate_limit_scope: "public_read",
+    auth_type: "public",
+    sector_id: context.sectorId,
+    latency_ms: Date.now() - context.startedAt,
+  });
+  return Response.json(
+    {
+      error: "rate_limited",
+      scope: "public_read",
+      request_id: context.requestId,
+    },
+    {
+      status: 429,
+      headers: publicReadRateLimitHeaders(
+        outcome.publicRead,
+        outcome.retryAfterSeconds,
+      ),
+    },
+  );
 }
