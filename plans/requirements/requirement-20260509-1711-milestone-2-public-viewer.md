@@ -2,11 +2,34 @@
 date: 2026-05-09
 type: feature
 topic: milestone-2-public-viewer
-status: draft
+status: shipped
+shipped: 2026-05-11
 planning_depth: standard
 ---
 
 # Requirement: Milestone 2 — Public Canvas Viewer
+
+## Shipped vs deferred (2026-05-11)
+
+**Shipped to <https://botplace.app>:**
+
+- V1 — Three public read endpoints under `/api/v1/public/...` (sector metadata, manifest, chunk binary) with `Cache-Control` + `CDN-Cache-Control` headers and ETag/If-None-Match short-circuit on the chunk endpoint. The CDN absorbs steady-state polling; the `PUBLIC_READ` rate-limit bucket is the in-app floor below Vercel's Firewall.
+- V2 — Viewer page at `/` and `/sectors/:id` (canonical bookmark form). Google sign-in shell relocated to `/account`. Server component fetches metadata via the shared `loadSectorMeta` helper in `src/sectors/` (no HTTP loopback, no SSRF surface).
+- V3 — `ChunkCache`, `PollLoop`, `viewer-fetch` modules with 26 unit tests covering manifest-diff, Retry-After-aware exponential backoff, status-change callbacks, and cache repaint on (re)mount.
+- V4 — Canvas-2D rendering with Uint32 RGBA palette + dirty-rect `putImageData`, CSS-driven pan/zoom, Pointer Events unifying mouse/touch/pen, two-pointer pinch math, keyboard navigation, `image-rendering: pixelated`, mobile parity verified on real iPhone Safari + Android Chrome.
+- V5 — Vercel Firewall rules configured: `public-no-ua` (block requests with empty User-Agent) and `public-rate-limit` (600 req/min/IP). In-app `PUBLIC_READ` bucket (60/sec/IP) is the unconditional floor.
+- V6 — Docs: public-endpoint section in [`docs/api/v1.md`](../../docs/api/v1.md), new [`docs/dev/viewer.md`](../../docs/dev/viewer.md), Firewall recipe in [`docs/admin/v1.md`](../../docs/admin/v1.md), `docs/dev/probes/m2-viewer.md` probe matrix, and the agent-runnable `pnpm sector:create-probe` / `pnpm dev:seed-bot` helpers.
+- V7 — Manual probes 1, 5, 6, 7 verified from operator side; mobile probes 2 + 3 verified on real devices.
+- Bot-side parity (P2.10): authenticated `/api/v1/sectors/:id/manifest` + ETag on the existing chunk endpoint so bots can mirror sectors without going through the human door.
+
+**Deferred (not blocking M2; tracked for follow-up):**
+
+- M2.5 demo bots — small operator-side bots writing recognizable patterns to `sector-1`, so first visitors see movement instead of an empty canvas. Travis-side follow-up before any public announcement.
+- Firewall-rules-as-code — currently configured via the Vercel dashboard. A `pnpm admin:firewall` script that PUTs the rules via Vercel's REST API would mirror the agent-native bar M1 set. Carried into M3 polish.
+- Pixel attribution UI / click-to-inspect — the data is in `PixelEvent` rows; surfacing it in the viewer ships with M3 (bot DX).
+- Probe-headless automation — the manual probe matrix is documented and labeled by headlessness, but the timing-sensitive probes (1, 6) still rely on visual / dashboard verification. Scripted assertion helpers would tighten the next milestone's verification loop.
+
+**Carried into the M3 polish window** (review P3s): wire/protocol nits (X-Request-Id on success responses, RFC-7232-compliant If-None-Match parser, Vary header), code organization nits, doc consolidation. None gate M2 ship.
 
 ## Status
 
