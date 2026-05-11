@@ -105,6 +105,11 @@ const linkStyle: React.CSSProperties = {
 
 const canvasShellStyle: React.CSSProperties = {
   flex: 1,
+  // `min-height: 0` lets the flex item shrink below its content's natural
+  // size. Without it, the 1000×1000 canvas's intrinsic layout dimensions
+  // would push this section past its flex-1 allocation and the bottom of
+  // the canvas would fall below the viewport fold.
+  minHeight: 0,
   position: "relative",
   background: "#000",
 };
