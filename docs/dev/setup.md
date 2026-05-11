@@ -2,6 +2,62 @@
 
 Get a clone of this repo running locally with a working dev server, a connected Postgres, and applied migrations.
 
+## Quickstart (local-streaming setup, with 1Password)
+
+This is the default path for a human developer running Botplace on a laptop. It uses 1Password CLI (`op`) to source long-lived secrets (Neon API key, Google OAuth secret, admin token) into process env on each command, leaving disposable per-branch values in `.env`.
+
+```bash
+# One-time machine setup
+brew install fnm 1password-cli
+corepack enable
+fnm install                       # picks up .nvmrc → Node 24
+eval $(op signin)                 # sign in to 1Password
+
+# One-time repo setup
+pnpm install
+pnpm op pnpm db:bootstrap         # creates a Neon dev branch, writes .env, runs migrations
+
+# Daily
+pnpm op pnpm dev                  # start the dev server with secrets in process env
+```
+
+Then open <http://localhost:3000>. The viewer loads `sector-1` (which will be empty in your dev branch until you write some pixels).
+
+**Why `pnpm op` in front of everything?** It's a thin wrapper that runs `op run --env-file=op.env -- <cmd>`, which pulls the secrets named in [`op.env`](../../op.env) from 1Password and injects them into the process env of the inner command. The wrapper script is at `scripts/env/op-run.sh`. Using it consistently means you never have to remember which commands need which secrets.
+
+Plain `pnpm <cmd>` still works for things that don't need process-env secrets (e.g. `pnpm lint`, `pnpm test`, `pnpm typecheck`). When in doubt, prefix with `pnpm op` — it's a no-op for commands that don't read the env vars it injects.
+
+## Quickstart (cloud-agent setup, no 1Password)
+
+For coding agents running in a cloud sandbox, your platform injects long-lived secrets into process env directly (e.g. via `NEON_API_KEY` and `NEON_PROJECT_ID` set as platform secrets on the agent). You skip the `op` step:
+
+```bash
+# Process env already populated by the agent platform
+corepack enable
+pnpm install
+pnpm db:bootstrap                 # no `op` prefix — secrets are already in env
+pnpm dev
+```
+
+The `pnpm <cmd>` form is the same as the local-streaming path's inner command — just without the `pnpm op` wrapper. Everything beyond bootstrap (`pnpm test`, `pnpm dev`, etc.) is identical between the two setups.
+
+## Which commands need process-env secrets?
+
+| Command | `.env` is enough? | Needs in process env | Sourced from |
+|---|---|---|---|
+| `pnpm install` | yes | — | — |
+| `pnpm lint`, `pnpm typecheck`, `pnpm test` | yes | — | — |
+| `pnpm dev` (browse anonymously) | yes | — | — |
+| `pnpm dev` (sign in via Google) | no | `GOOGLE_CLIENT_SECRET` | `op.env` → 1Password |
+| `pnpm db:bootstrap`, `pnpm db:branch:cleanup` | no | `NEON_API_KEY`, `NEON_PROJECT_ID` | `op.env` → 1Password |
+| `pnpm db:migrate:dev`, `pnpm db:migrate:deploy`, `pnpm db:check` | yes | — | `.env` (`DATABASE_URL_UNPOOLED`) |
+| `pnpm admin:*` | no | `ADMIN_TOKEN` (+ `BOTPLACE_URL` for non-localhost) | `op.env` → 1Password |
+| `pnpm bot:*`, `pnpm pat:*` | yes | `BOTPLACE_PAT` (after you mint one via the UI) | shell export, not in op.env |
+
+In the local-streaming setup, just run `pnpm op pnpm <cmd>` for any row marked "no" in the second column. In the cloud-agent setup, the platform's already injected those env vars, so `pnpm <cmd>` is enough.
+
+Run `pnpm op pnpm env:check` to confirm everything resolves correctly — it reports which env vars are present by name, never by value.
+
 ## Stack
 
 - **Runtime:** Node.js 24.x (pinned via `.nvmrc` and `engines.node`)
@@ -91,9 +147,13 @@ pnpm db:generate
 
 ## Connecting to Neon for local dev
 
-The recommended path is a hosted Neon dev branch off the shared `dev-main` baseline. With `NEON_API_KEY` and `NEON_PROJECT_ID` in your process env (see [secrets.md](secrets.md)):
+The recommended path is a hosted Neon dev branch off the shared `dev-main` baseline. With `NEON_API_KEY` and `NEON_PROJECT_ID` in your process env:
 
 ```bash
+# Local-streaming setup (1Password):
+pnpm op pnpm db:bootstrap
+
+# Cloud-agent setup (platform already injected NEON_*):
 pnpm db:bootstrap
 ```
 
@@ -116,6 +176,7 @@ Production uses Upstash Redis for rate limiting. Local dev has **no Upstash depe
 | `pnpm lint` | Run ESLint |
 | `pnpm typecheck` | Run `tsc --noEmit` |
 | `pnpm env:check` | Report required env-var presence by name; exits non-zero if any required input is missing |
+| `pnpm op <cmd>` | Wrap any command with 1Password-sourced secrets via `op run --env-file=op.env -- <cmd>`. Use this in local-streaming setup; cloud-agent setups skip it because the platform injects env directly |
 | `pnpm db:bootstrap` | Create or reuse a Neon dev branch off `dev-main`, write `.env`, run migrations |
 | `pnpm db:check` | Standalone DB connectivity health check (no Next.js dev server required) |
 | `pnpm db:branch:cleanup` | Delete disposable `dev-<random>` Neon branches (protects `main`, `dev-main`, and the branch in your current `.env`). `--dry-run` to preview, `--yes` to skip the prompt |

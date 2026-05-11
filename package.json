@@ -14,6 +14,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "env:check": "scripts/env/check-env.sh",
+    "op": "scripts/env/op-run.sh",
     "db:bootstrap": "scripts/db/bootstrap.sh",
     "db:branch:cleanup": "scripts/db/branch-cleanup.sh",
     "db:check": "scripts/db/check-db.sh",
