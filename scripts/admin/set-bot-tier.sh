@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # scripts/admin/set-bot-tier.sh
 #
-# Thin wrapper around POST /api/v1/admin/set-bot-tier. The endpoint is the
-# source of truth; this script just supplies the admin token from process
-# env so an operator doesn't need to remember the curl.
+# Thin wrapper around PUT /api/v1/admin/bots/:id/tier. The endpoint is
+# the source of truth; this script just supplies the admin token from
+# process env so an operator doesn't need to remember the curl.
 #
 # Usage:
 #   pnpm admin:set-bot-tier <bot-id> <FREE|POWER|ADMIN>
@@ -38,7 +38,7 @@ if [ -z "$TOKEN" ]; then
   exit 2
 fi
 
-exec curl -fsS -X POST "$URL/api/v1/admin/set-bot-tier" \
+exec curl -fsS -X PUT "$URL/api/v1/admin/bots/$BOT_ID/tier" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$(printf '{"bot_id":"%s","rate_tier":"%s"}' "$BOT_ID" "$TIER")"
+  -d "$(printf '{"rate_tier":"%s"}' "$TIER")"

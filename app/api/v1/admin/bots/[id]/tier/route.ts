@@ -1,9 +1,14 @@
-// POST /api/v1/admin/set-bot-tier — operator endpoint to set a bot's
-// `rate_tier` (FREE / POWER / ADMIN). Gated by ADMIN_TOKEN. Missing or
-// wrong token returns 404 (matches the revoke-key endpoint convention).
+// PUT /api/v1/admin/bots/:id/tier — operator endpoint to set a bot's
+// `rate_tier`. Gated by ADMIN_TOKEN. Missing or wrong token returns 404
+// (matches the revoke-key endpoint convention so the path's existence
+// isn't advertised to external probers).
+//
+// PUT semantics: the request body sets the resource (the bot's tier) to
+// the provided value. Idempotent — setting a bot to its current tier
+// returns 200 with `idempotent: true` and writes a no-op audit row.
 //
 // Body shape:
-//   { "bot_id": "<cuid>", "rate_tier": "FREE" | "POWER" | "ADMIN" }
+//   { "rate_tier": "FREE" | "POWER" | "ADMIN" }
 //
 // Every successful call writes an AdminAuditEvent row with the
 // before/after tier values. Failed admin-auth attempts also write a
@@ -18,8 +23,6 @@ import { clientIpFrom } from "@/lib/http";
 import { log } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import type { BotRateTier } from "@/generated/prisma/enums";
-
-const PATH = "/api/v1/admin/set-bot-tier";
 
 const VALID_TIERS: readonly BotRateTier[] = ["FREE", "POWER", "ADMIN"];
 
@@ -43,6 +46,7 @@ function isAuthorizedAdmin(request: Request): boolean {
 async function recordFailedAdminAuth(
   requestId: string,
   request: Request,
+  path: string,
 ): Promise<void> {
   try {
     await prisma.adminAuditEvent.create({
@@ -51,7 +55,7 @@ async function recordFailedAdminAuth(
         action: "failed_admin_auth",
         targetId: null,
         payloadJson: {
-          path: PATH,
+          path,
           had_authorization_header:
             request.headers.get("authorization") !== null,
         },
@@ -63,14 +67,19 @@ async function recordFailedAdminAuth(
   }
 }
 
-export async function POST(request: Request) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const startedAt = Date.now();
   const requestId = randomUUID();
+  const { id: botId } = await params;
+  const path = `/api/v1/admin/bots/${botId}/tier`;
 
   if (!isAuthorizedAdmin(request)) {
     log("warn", {
       request_id: requestId,
-      path: PATH,
+      path,
       status: 404,
       error_slug: "not_found",
       auth_failure_reason:
@@ -79,25 +88,22 @@ export async function POST(request: Request) {
           : "unknown_key",
       latency_ms: Date.now() - startedAt,
     });
-    await recordFailedAdminAuth(requestId, request);
+    await recordFailedAdminAuth(requestId, request, path);
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
   const body = (await request.json().catch(() => null)) as {
-    bot_id?: unknown;
     rate_tier?: unknown;
   } | null;
 
   if (
     !body ||
-    typeof body.bot_id !== "string" ||
-    body.bot_id.length === 0 ||
     typeof body.rate_tier !== "string" ||
     !VALID_TIERS.includes(body.rate_tier as BotRateTier)
   ) {
     log("warn", {
       request_id: requestId,
-      path: PATH,
+      path,
       status: 400,
       error_slug: "invalid_input",
       auth_type: "admin_token",
@@ -106,14 +112,13 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error: "invalid_input",
-        message: "`bot_id` is required; `rate_tier` must be FREE, POWER, or ADMIN.",
+        message: "`rate_tier` must be FREE, POWER, or ADMIN.",
         request_id: requestId,
       },
       { status: 400 },
     );
   }
 
-  const botId = body.bot_id;
   const newTier = body.rate_tier as BotRateTier;
   const sourceIp = clientIpFrom(request);
 
@@ -152,7 +157,7 @@ export async function POST(request: Request) {
   if (!result.found) {
     log("warn", {
       request_id: requestId,
-      path: PATH,
+      path,
       status: 404,
       error_slug: "bot_not_found",
       auth_type: "admin_token",
@@ -166,7 +171,7 @@ export async function POST(request: Request) {
 
   log("info", {
     request_id: requestId,
-    path: PATH,
+    path,
     status: 200,
     auth_type: "admin_token",
     target_id: botId,
