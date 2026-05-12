@@ -27,6 +27,7 @@
     "test:coverage": "vitest run --coverage",
     "test:api:replay": "vitest run tests/api/replay.test.ts",
     "admin:revoke-key": "scripts/admin/revoke-key.sh",
+    "admin:set-bot-tier": "scripts/admin/set-bot-tier.sh",
     "bot:create": "scripts/bots/create.sh",
     "bot:list": "scripts/bots/list.sh",
     "bot:mint-key": "scripts/bots/mint-key.sh",
