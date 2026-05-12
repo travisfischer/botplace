@@ -45,12 +45,86 @@ export function isAuthorizedCron(request: Request): boolean {
 }
 
 /**
- * Base URL the launch bots use for their outbound HTTP calls. Defaults
- * to https://botplace.app; override via BOTPLACE_API_BASE_URL for
- * preview/staging.
+ * Soft-launch gate for the M2.5 cron-driven launch bots. Vercel
+ * auto-deploys on merge and the cron schedule (`* * * * *`) fires the
+ * moment the new build is live — before the operator has finished
+ * Phase 2 (seed bots) and Phase 3 (wire `M25_*_KEY` env vars). To
+ * avoid 500-noise during that window, each cron route short-circuits
+ * to a 200 `{ skipped: true, reason: "bots_disabled" }` whenever this
+ * flag is not set to the literal string `"true"`. The operator flips
+ * it after provisioning to wake the bots.
+ *
+ * Truthy values accepted: `"true"`, `"1"`, `"yes"` (case-insensitive),
+ * to give the operator some latitude when typing values into the
+ * Vercel dashboard. Anything else (including unset) means "disabled."
+ */
+export function isLaunchBotsEnabled(): boolean {
+  const raw = process.env.M25_BOTS_ENABLED;
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
+}
+
+/**
+ * Production canonical base URL. Hardcoded so a compromised or
+ * mistyped env var cannot redirect POWER-tier bot writes (or the
+ * `Authorization: Bearer bp_live_…` header that travels with them)
+ * to an attacker-controlled host. Override is only honored outside
+ * production, and even then is validated against a known-good shape.
+ */
+const PROD_BASE_URL = "https://botplace.app";
+
+/**
+ * True when this process is the live production deploy. Vercel sets
+ * `VERCEL_ENV=production` only on the production deployment;
+ * preview and dev deployments use other values, and local runs have
+ * the var unset. We treat anything other than the explicit
+ * "production" sentinel as non-production for the purposes of the
+ * base-URL override.
+ */
+function isProduction(): boolean {
+  return process.env.VERCEL_ENV === "production";
+}
+
+/**
+ * Sanity check on a non-production override. The override must either
+ * point at the production host (no-op) or a known-safe shape — a
+ * botplace.app subdomain (Vercel preview deploys use these) or a
+ * localhost / loopback URL for dev. Anything else is rejected so a
+ * fat-fingered env var or compromised override can't exfiltrate the
+ * POWER-tier bearer token to an arbitrary host.
+ */
+function isAllowedOverride(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  if (url.host === "botplace.app") return true;
+  if (url.host.endsWith(".botplace.app")) return true;
+  if (url.hostname === "localhost") return true;
+  if (url.hostname === "127.0.0.1") return true;
+  return false;
+}
+
+/**
+ * Base URL the launch bots use for their outbound HTTP calls. In
+ * production this is hardcoded; in preview/dev an override is honored
+ * iff it passes `isAllowedOverride`.
  */
 export function apiBase(): string {
-  return process.env.BOTPLACE_API_BASE_URL ?? "https://botplace.app";
+  if (isProduction()) return PROD_BASE_URL;
+  const override = process.env.BOTPLACE_API_BASE_URL;
+  if (!override) return PROD_BASE_URL;
+  if (!isAllowedOverride(override)) {
+    // Treat a malformed override as if it weren't set rather than
+    // throwing — the bot ticks should keep working against prod even
+    // if someone fat-fingers a preview env var.
+    return PROD_BASE_URL;
+  }
+  return override.replace(/\/+$/, "");
 }
 
 export interface WritePixelInput {
@@ -59,6 +133,12 @@ export interface WritePixelInput {
   x: number;
   y: number;
   color: number;
+  /**
+   * Cron-tick request id. Forwarded as `X-Botplace-Parent-Request-Id`
+   * on the pixel-write so operator log queries can stitch the tick to
+   * the downstream `/api/v1/pixels` log line.
+   */
+  parentRequestId?: string;
 }
 
 export interface WritePixelResult {
@@ -68,7 +148,16 @@ export interface WritePixelResult {
   chunk_version?: string;
   /** Filled when ok===false. */
   error?: string;
+  /**
+   * The server's own request id, echoed from the JSON response body
+   * (both success and error). Lets the caller log "cron tick X invoked
+   * pixel-write Y" so an operator can pivot between layers.
+   */
+  serverRequestId?: string;
 }
+
+/** Custom header name for parent-request-id propagation. Documented in `docs/api/v1.md`. */
+const PARENT_REQUEST_ID_HEADER = "X-Botplace-Parent-Request-Id";
 
 /**
  * POST one pixel via the public /api/v1/pixels endpoint, signed with
@@ -82,13 +171,17 @@ export async function writePixel(
   input: WritePixelInput,
   signal: AbortSignal,
 ): Promise<WritePixelResult> {
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${input.apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (input.parentRequestId) {
+    headers[PARENT_REQUEST_ID_HEADER] = input.parentRequestId;
+  }
   const res = await fetch(`${apiBase()}/api/v1/pixels`, {
     method: "POST",
     signal,
-    headers: {
-      "Authorization": `Bearer ${input.apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
       sector_id: input.sectorId,
       x: input.x,
@@ -98,19 +191,25 @@ export async function writePixel(
   });
   if (!res.ok) {
     let errSlug = `http_${res.status}`;
+    let serverRequestId: string | undefined;
     try {
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as { error?: string; request_id?: string };
       if (typeof j.error === "string") errSlug = j.error;
+      if (typeof j.request_id === "string") serverRequestId = j.request_id;
     } catch {
       // body wasn't JSON; keep the http_* slug
     }
-    return { ok: false, status: res.status, error: errSlug };
+    return { ok: false, status: res.status, error: errSlug, serverRequestId };
   }
-  const body = (await res.json()) as { chunk_version?: string };
+  const body = (await res.json()) as {
+    chunk_version?: string;
+    request_id?: string;
+  };
   return {
     ok: true,
     status: res.status,
     chunk_version: body.chunk_version,
+    serverRequestId: body.request_id,
   };
 }
 

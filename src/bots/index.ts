@@ -10,7 +10,7 @@ export type BotStatus = "ACTIVE" | "REVOKED";
 // Mirrors `BotRateTier` from the Prisma schema. Kept as a string union
 // so this module stays edge-runtime friendly (no Prisma client import
 // at type level only).
-export type BotRateTier = "FREE" | "POWER" | "ADMIN";
+export type BotRateTier = "FREE" | "POWER";
 
 /**
  * Audit-trail context plumbed in from the HTTP layer. When present, every

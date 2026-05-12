@@ -8,7 +8,7 @@
 // returns 200 with `idempotent: true` and writes a no-op audit row.
 //
 // Body shape:
-//   { "rate_tier": "FREE" | "POWER" | "ADMIN" }
+//   { "rate_tier": "FREE" | "POWER" }
 //
 // Every successful call writes an AdminAuditEvent row with the
 // before/after tier values. Failed admin-auth attempts also write a
@@ -24,7 +24,7 @@ import { log } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import type { BotRateTier } from "@/generated/prisma/enums";
 
-const VALID_TIERS: readonly BotRateTier[] = ["FREE", "POWER", "ADMIN"];
+const VALID_TIERS: readonly BotRateTier[] = ["FREE", "POWER"];
 
 function isAuthorizedAdmin(request: Request): boolean {
   const expected = process.env.ADMIN_TOKEN;
@@ -112,7 +112,7 @@ export async function PUT(
     return Response.json(
       {
         error: "invalid_input",
-        message: "`rate_tier` must be FREE, POWER, or ADMIN.",
+        message: "`rate_tier` must be FREE or POWER.",
         request_id: requestId,
       },
       { status: 400 },

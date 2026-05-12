@@ -116,23 +116,6 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
     }
   });
 
-  it("ADMIN tier behaves like POWER (faster bot bucket, no per-IP)", async () => {
-    const ip = uniqueIp();
-
-    const r1 = await checkPixelWriteRateLimit({
-      botKey: uniqueBotKey("admin-bot-a"),
-      ip,
-      tier: "ADMIN",
-    });
-    const r2 = await checkPixelWriteRateLimit({
-      botKey: uniqueBotKey("admin-bot-b"),
-      ip,
-      tier: "ADMIN",
-    });
-    expect(r1.ok).toBe(true);
-    expect(r2.ok).toBe(true);
-  });
-
   it("defaults to FREE behavior when tier is omitted (back-compat)", async () => {
     const botKey = uniqueBotKey("default-bot");
     const ip = uniqueIp();
@@ -142,5 +125,76 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
 
     const r2 = await checkPixelWriteRateLimit({ botKey, ip });
     expect(r2.ok).toBe(false);
+  });
+
+  // The defining property of POWER vs FREE isn't the burst capacity
+  // (which both tests above cover) — it's the refill rate. A regression
+  // that swapped `refillIntervalMs: 1_000` → `60_000` (capacity 60,
+  // refill 60s) would pass every other tier test in this file and
+  // silently break every M2.5 launch bot. Fake timers let us assert the
+  // contract: at ~1.1s after a POWER bucket is drained, the next write
+  // succeeds; at ~1.1s after a FREE bucket is drained, the next write
+  // still fails; at ~61s after a FREE bucket is drained, the next write
+  // succeeds.
+  it("POWER tier: per-bot bucket refills at ~1 token/sec", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T12:00:00.000Z"));
+
+    const botKey = uniqueBotKey("power-refill-bot");
+    const ip = uniqueIp();
+
+    // Drain the bucket.
+    for (let i = 0; i < 60; i++) {
+      const r = await checkPixelWriteRateLimit({ botKey, ip, tier: "POWER" });
+      expect(r.ok, `drain request ${i + 1} should succeed`).toBe(true);
+    }
+    // 61st request fails — bucket empty.
+    const overflow = await checkPixelWriteRateLimit({ botKey, ip, tier: "POWER" });
+    expect(overflow.ok).toBe(false);
+
+    // Advance time by 1.1s — one token should refill (1 / 1s).
+    vi.setSystemTime(new Date("2026-05-12T12:00:01.100Z"));
+    const refilled = await checkPixelWriteRateLimit({ botKey, ip, tier: "POWER" });
+    expect(refilled.ok, "1.1s after drain, one token should have refilled").toBe(true);
+    // And the next one fails again — we only got back one token.
+    const overflowAgain = await checkPixelWriteRateLimit({ botKey, ip, tier: "POWER" });
+    expect(overflowAgain.ok).toBe(false);
+  });
+
+  it("FREE tier: per-bot bucket refills at ~1 token/60s, NOT 1 token/sec", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-12T12:00:00.000Z"));
+
+    const botKey = uniqueBotKey("free-refill-bot");
+    const ip = uniqueIp();
+
+    // First request succeeds (capacity 1).
+    const r1 = await checkPixelWriteRateLimit({ botKey, ip, tier: "FREE" });
+    expect(r1.ok).toBe(true);
+    // Second request fails immediately.
+    const r2 = await checkPixelWriteRateLimit({ botKey, ip, tier: "FREE" });
+    expect(r2.ok).toBe(false);
+
+    // 1.1s later — still fails. FREE tier doesn't refill at 1/sec.
+    vi.setSystemTime(new Date("2026-05-12T12:00:01.100Z"));
+    const stillThrottled = await checkPixelWriteRateLimit({
+      botKey,
+      ip,
+      tier: "FREE",
+    });
+    expect(
+      stillThrottled.ok,
+      "FREE tier must NOT refill at 1.1s (would mean it picked up the POWER bucket)",
+    ).toBe(false);
+
+    // 61s later — token has refilled (1 per 60s). Use a fresh IP to
+    // avoid the per-IP bucket interfering with the per-bot refill check.
+    vi.setSystemTime(new Date("2026-05-12T12:01:01.100Z"));
+    const refilled = await checkPixelWriteRateLimit({
+      botKey,
+      ip: uniqueIp(),
+      tier: "FREE",
+    });
+    expect(refilled.ok, "FREE tier should refill its bot bucket after 60s").toBe(true);
   });
 });

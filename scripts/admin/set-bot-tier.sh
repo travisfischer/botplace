@@ -6,7 +6,7 @@
 # process env so an operator doesn't need to remember the curl.
 #
 # Usage:
-#   pnpm admin:set-bot-tier <bot-id> <FREE|POWER|ADMIN>
+#   pnpm admin:set-bot-tier <bot-id> <FREE|POWER>
 #
 # Required process env:
 #   ADMIN_TOKEN     — the static admin token. Source via `op run` or shell.
@@ -19,14 +19,14 @@ set -euo pipefail
 BOT_ID="${1:-}"
 TIER="${2:-}"
 if [ -z "$BOT_ID" ] || [ -z "$TIER" ]; then
-  printf 'usage: pnpm admin:set-bot-tier <bot-id> <FREE|POWER|ADMIN>\n' >&2
+  printf 'usage: pnpm admin:set-bot-tier <bot-id> <FREE|POWER>\n' >&2
   exit 2
 fi
 
 case "$TIER" in
-  FREE|POWER|ADMIN) ;;
+  FREE|POWER) ;;
   *)
-    printf 'ERROR: tier must be FREE, POWER, or ADMIN (got %q).\n' "$TIER" >&2
+    printf 'ERROR: tier must be FREE or POWER (got %q).\n' "$TIER" >&2
     exit 2
     ;;
 esac

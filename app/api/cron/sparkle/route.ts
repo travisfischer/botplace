@@ -19,6 +19,7 @@ import {
   fetchEvents,
   fetchSectorMeta,
   isAuthorizedCron,
+  isLaunchBotsEnabled,
   sleep,
   writePixel,
 } from "@/src/launch-bots/runner";
@@ -45,6 +46,24 @@ export async function GET(request: Request) {
       error_slug: "not_found",
     });
     return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // Soft-launch gate. See visitor-pulse for the rationale.
+  if (!isLaunchBotsEnabled()) {
+    log("info", {
+      request_id: requestId,
+      path: PATH,
+      status: 200,
+      bot_name: SELF_BOT_NAME,
+      skipped: true,
+      reason: "bots_disabled",
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json({
+      bot: SELF_BOT_NAME,
+      skipped: true,
+      reason: "bots_disabled",
+    });
   }
 
   const apiKey = process.env.M25_SPARKLE_KEY;
@@ -103,13 +122,22 @@ export async function GET(request: Request) {
 
     let written = 0;
     let firstError: string | undefined;
+    let firstErrorServerRequestId: string | undefined;
     for (const [x, y] of targets) {
       const result = await writePixel(
-        { apiKey, sectorId: SECTOR_ID, x, y, color: SPARKLE_COLOR },
+        {
+          apiKey,
+          sectorId: SECTOR_ID,
+          x,
+          y,
+          color: SPARKLE_COLOR,
+          parentRequestId: requestId,
+        },
         signal,
       );
       if (!result.ok) {
         firstError = firstError ?? result.error;
+        firstErrorServerRequestId = firstErrorServerRequestId ?? result.serverRequestId;
         break;
       }
       written++;
@@ -124,6 +152,9 @@ export async function GET(request: Request) {
       pixels_written: written,
       latency_ms: Date.now() - startedAt,
       ...(firstError ? { error_slug: firstError } : {}),
+      ...(firstErrorServerRequestId
+        ? { downstream_request_id: firstErrorServerRequestId }
+        : {}),
     });
 
     return Response.json({

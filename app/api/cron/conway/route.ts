@@ -29,6 +29,7 @@ import {
   fetchChunkBytes,
   fetchSectorMeta,
   isAuthorizedCron,
+  isLaunchBotsEnabled,
   sleep,
   writePixel,
   type SectorMeta,
@@ -188,6 +189,24 @@ export async function GET(request: Request) {
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 
+  // Soft-launch gate. See visitor-pulse for the rationale.
+  if (!isLaunchBotsEnabled()) {
+    log("info", {
+      request_id: requestId,
+      path: PATH,
+      status: 200,
+      bot_name: "m25-conway",
+      skipped: true,
+      reason: "bots_disabled",
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json({
+      bot: "m25-conway",
+      skipped: true,
+      reason: "bots_disabled",
+    });
+  }
+
   const apiKey = process.env.M25_CONWAY_KEY;
   if (!apiKey) {
     log("error", {
@@ -255,16 +274,25 @@ export async function GET(request: Request) {
     const writeBudget = Math.min(allChanges.length, MAX_WRITES_PER_TICK);
     let written = 0;
     let firstError: string | undefined;
+    let firstErrorServerRequestId: string | undefined;
     for (let i = 0; i < writeBudget; i++) {
       const { x: inX, y: inY, newColor } = allChanges[i];
       const absX = cx * meta.chunk_size + inX;
       const absY = cy * meta.chunk_size + inY;
       const result = await writePixel(
-        { apiKey, sectorId: SECTOR_ID, x: absX, y: absY, color: newColor },
+        {
+          apiKey,
+          sectorId: SECTOR_ID,
+          x: absX,
+          y: absY,
+          color: newColor,
+          parentRequestId: requestId,
+        },
         signal,
       );
       if (!result.ok) {
         firstError = firstError ?? result.error;
+        firstErrorServerRequestId = firstErrorServerRequestId ?? result.serverRequestId;
         break;
       }
       written++;
@@ -283,6 +311,9 @@ export async function GET(request: Request) {
       truncated: allChanges.length > MAX_WRITES_PER_TICK,
       latency_ms: Date.now() - startedAt,
       ...(firstError ? { error_slug: firstError } : {}),
+      ...(firstErrorServerRequestId
+        ? { downstream_request_id: firstErrorServerRequestId }
+        : {}),
     });
 
     return Response.json({

@@ -28,6 +28,7 @@ export const config = {
 // `Redis.fromEnv()` auto-detects either canonical or KV_* env names.
 let redis: Redis | null = null;
 let warnedMissing = false;
+let warnedFailure = false;
 function getRedis(): Redis | null {
   if (redis) return redis;
   const url =
@@ -66,6 +67,25 @@ function shouldTrack(pathname: string): boolean {
   return true;
 }
 
+// Hard upper bound on how long we wait for Upstash before giving up.
+// `lib/rate-limit.ts` uses 2_000ms for the same reason on the Node
+// runtime; the edge runtime has a tighter overall invocation budget so
+// the manifest request can't afford to hang on telemetry. 500ms is
+// generous for a two-op pipeline against Upstash's edge region.
+const UPSTASH_TIMEOUT_MS = 500;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`upstash_timeout_${ms}ms`));
+    }, ms);
+  });
+  return Promise.race([p, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  }) as Promise<T>;
+}
+
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const url = request.nextUrl;
   if (!shouldTrack(url.pathname)) return NextResponse.next();
@@ -82,10 +102,24 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
       // a busy minute's set always lives long enough to be read by the
       // /viewers endpoint in the next minute.
       // We use a pipeline to do both in one round trip.
-      await r.pipeline().sadd(key, ip).expire(key, 120).exec();
-    } catch {
-      // Telemetry is best-effort. Don't fail the request because the
-      // counter couldn't write.
+      await withTimeout(
+        r.pipeline().sadd(key, ip).expire(key, 120).exec(),
+        UPSTASH_TIMEOUT_MS,
+      );
+    } catch (err) {
+      // Telemetry is best-effort: don't fail the request because the
+      // counter couldn't write. But do leave a greppable signal — a
+      // sustained Upstash outage drives /viewers to 0, which drives
+      // visitor-pulse to darken its entire meter (a user-visible
+      // regression). Rate-limit to one warn per isolate so we don't
+      // spam logs during a real outage.
+      if (!warnedFailure) {
+        warnedFailure = true;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[viewer-tracker] upstash write failed (dependency=upstash): ${message}`,
+        );
+      }
     }
   }
 

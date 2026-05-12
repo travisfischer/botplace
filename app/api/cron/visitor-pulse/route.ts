@@ -24,6 +24,7 @@ import {
   fetchSectorMeta,
   fetchViewers,
   isAuthorizedCron,
+  isLaunchBotsEnabled,
   sleep,
   writePixel,
 } from "@/src/launch-bots/runner";
@@ -68,6 +69,26 @@ export async function GET(request: Request) {
       error_slug: "not_found",
     });
     return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  // Soft-launch gate. Vercel auto-fires the cron the moment the deploy
+  // is live, before keys are provisioned. Return 200 `skipped` so the
+  // interim state is greppable without faking failures.
+  if (!isLaunchBotsEnabled()) {
+    log("info", {
+      request_id: requestId,
+      path: PATH,
+      status: 200,
+      bot_name: "m25-visitor-pulse",
+      skipped: true,
+      reason: "bots_disabled",
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json({
+      bot: "m25-visitor-pulse",
+      skipped: true,
+      reason: "bots_disabled",
+    });
   }
 
   const apiKey = process.env.M25_VISITOR_PULSE_KEY;
@@ -123,6 +144,7 @@ export async function GET(request: Request) {
     // to comfortably stay under the POWER tier's 1/sec/bot ceiling.
     let written = 0;
     let firstError: string | undefined;
+    let firstErrorServerRequestId: string | undefined;
     const blocksToPaint: Array<{ block: number; color: number }> = [
       ...toLight.map((b) => ({ block: b, color: LIT_COLOR })),
       ...toDark.map((b) => ({ block: b, color: DEFAULT_COLOR })),
@@ -138,9 +160,13 @@ export async function GET(request: Request) {
         [xBase + 1, 1],
       ];
       for (const [x, y] of pixels) {
-        const result = await writePixel({ apiKey, sectorId: SECTOR_ID, x, y, color }, signal);
+        const result = await writePixel(
+          { apiKey, sectorId: SECTOR_ID, x, y, color, parentRequestId: requestId },
+          signal,
+        );
         if (!result.ok) {
           firstError = firstError ?? result.error;
+          firstErrorServerRequestId = firstErrorServerRequestId ?? result.serverRequestId;
           // Stop if we hit rate limit / other error to avoid burning
           // the rest of the budget. Next tick will pick up where we
           // left off (the previousBlocks count in Redis is unchanged
@@ -175,6 +201,9 @@ export async function GET(request: Request) {
       pixels_written: written,
       latency_ms: Date.now() - startedAt,
       ...(firstError ? { error_slug: firstError } : {}),
+      ...(firstErrorServerRequestId
+        ? { downstream_request_id: firstErrorServerRequestId }
+        : {}),
     });
 
     return Response.json({

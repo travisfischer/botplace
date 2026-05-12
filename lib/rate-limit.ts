@@ -50,10 +50,10 @@ const WRITE_BOT: BucketConfig = {
   refillIntervalString: "60 s",
   prefix: "botplace:rl:bot",
 };
-// POWER (and ADMIN) tier per-bot write bucket. 1 token / 1s, capacity 60
-// — so a POWER bot can burst up to 60 writes immediately and then sustain
-// 60 writes/min indefinitely. POWER also bypasses the per-IP bucket
-// (see checkPixelWriteRateLimit); both are M2.5 product features behind
+// POWER tier per-bot write bucket. 1 token / 1s, capacity 60 — so a
+// POWER bot can burst up to 60 writes immediately and then sustain 60
+// writes/min indefinitely. POWER also bypasses the per-IP bucket (see
+// checkPixelWriteRateLimit); both are M2.5 product features behind
 // `Bot.rateTier`.
 const WRITE_BOT_POWER: BucketConfig = {
   capacity: 60,
@@ -288,7 +288,7 @@ function toState(r: LimiterResult): BucketState {
 // Tier identifier mirrors `BotRateTier` from Prisma. Kept as a string
 // union so this module doesn't import the Prisma client and stays
 // usable from the Edge runtime (middleware).
-export type RateTier = "FREE" | "POWER" | "ADMIN";
+export type RateTier = "FREE" | "POWER";
 
 export async function checkPixelWriteRateLimit(input: {
   botKey: string;
@@ -305,10 +305,10 @@ export async function checkPixelWriteRateLimit(input: {
     return { ok: false, reason: "rate_limit_unavailable" };
   }
   try {
-    // FREE bots use the strict 1/60s bot bucket. POWER and ADMIN use
-    // the 1/sec/capacity-60 bucket. The per-IP bucket only applies to
-    // FREE — POWER/ADMIN bots typically share an egress IP (Vercel
-    // function origin, etc.) and the per-IP bucket would block them.
+    // FREE bots use the strict 1/60s bot bucket. POWER uses the
+    // 1/sec/capacity-60 bucket. The per-IP bucket only applies to FREE
+    // — POWER bots typically share an egress IP (Vercel function
+    // origin, etc.) and the per-IP bucket would block them.
     const useBotBucket = tier === "FREE" ? limiters.bot : limiters.botPower;
     const botResult = await useBotBucket.limit(input.botKey);
     if (!botResult.success) {
@@ -323,7 +323,7 @@ export async function checkPixelWriteRateLimit(input: {
       };
     }
 
-    // POWER/ADMIN: skip the per-IP bucket entirely.
+    // POWER: skip the per-IP bucket entirely.
     if (tier !== "FREE") {
       return {
         ok: true,
