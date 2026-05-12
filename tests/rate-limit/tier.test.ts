@@ -11,14 +11,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { checkPixelWriteRateLimit } from "@/lib/rate-limit";
 
+// In-memory rate-limit buckets persist across tests in the same vitest
+// run. To prevent cross-test contamination on IP and bot-key state, each
+// test draws unique keys from a monotonic per-suite counter.
+let _ipCounter = 0;
+function uniqueIp(): string {
+  _ipCounter += 1;
+  // Spread across the 203.0.113.0/24 documentation prefix (RFC 5737).
+  const octet = (_ipCounter % 250) + 1;
+  return `203.0.113.${octet}.t${_ipCounter}`;
+}
+function uniqueBotKey(label: string): string {
+  return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 describe("checkPixelWriteRateLimit — tier semantics", () => {
   afterEach(() => {
     vi.useRealTimers();
   });
 
   it("FREE tier: per-bot 1/60s — second call within window fails", async () => {
-    const botKey = "free-bot-" + Math.random().toString(36).slice(2);
-    const ip = "203.0.113." + Math.floor(Math.random() * 254 + 1);
+    const botKey = uniqueBotKey("free-bot");
+    const ip = uniqueIp();
 
     const r1 = await checkPixelWriteRateLimit({ botKey, ip, tier: "FREE" });
     expect(r1.ok).toBe(true);
@@ -33,8 +47,8 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
   });
 
   it("POWER tier: per-bot 1/sec/cap-60 — burst of 60 succeeds, 61st fails", async () => {
-    const botKey = "power-bot-" + Math.random().toString(36).slice(2);
-    const ip = "203.0.113." + Math.floor(Math.random() * 254 + 1);
+    const botKey = uniqueBotKey("power-bot");
+    const ip = uniqueIp();
 
     // 60 should fit comfortably in the POWER bot bucket (capacity 60).
     for (let i = 0; i < 60; i++) {
@@ -54,23 +68,23 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
   });
 
   it("POWER tier: per-IP bucket is bypassed (many bots from same IP can all write)", async () => {
-    const ip = "203.0.113." + Math.floor(Math.random() * 254 + 1);
+    const ip = uniqueIp();
 
     // Three different POWER bots from the same IP should each succeed
     // even though the per-IP FREE bucket would block them past the first
     // write per 60s.
     const r1 = await checkPixelWriteRateLimit({
-      botKey: "power-bot-a-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("power-bot-a"),
       ip,
       tier: "POWER",
     });
     const r2 = await checkPixelWriteRateLimit({
-      botKey: "power-bot-b-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("power-bot-b"),
       ip,
       tier: "POWER",
     });
     const r3 = await checkPixelWriteRateLimit({
-      botKey: "power-bot-c-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("power-bot-c"),
       ip,
       tier: "POWER",
     });
@@ -80,11 +94,11 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
   });
 
   it("FREE tier: per-IP bucket DOES throttle multiple bots from same IP", async () => {
-    const ip = "203.0.113." + Math.floor(Math.random() * 254 + 1);
+    const ip = uniqueIp();
 
     // First write succeeds.
     const r1 = await checkPixelWriteRateLimit({
-      botKey: "free-bot-a-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("free-bot-a"),
       ip,
       tier: "FREE",
     });
@@ -92,7 +106,7 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
 
     // Second bot, same IP, within 60s — per-IP bucket should reject.
     const r2 = await checkPixelWriteRateLimit({
-      botKey: "free-bot-b-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("free-bot-b"),
       ip,
       tier: "FREE",
     });
@@ -103,15 +117,15 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
   });
 
   it("ADMIN tier behaves like POWER (faster bot bucket, no per-IP)", async () => {
-    const ip = "203.0.113." + Math.floor(Math.random() * 254 + 1);
+    const ip = uniqueIp();
 
     const r1 = await checkPixelWriteRateLimit({
-      botKey: "admin-bot-a-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("admin-bot-a"),
       ip,
       tier: "ADMIN",
     });
     const r2 = await checkPixelWriteRateLimit({
-      botKey: "admin-bot-b-" + Math.random().toString(36).slice(2),
+      botKey: uniqueBotKey("admin-bot-b"),
       ip,
       tier: "ADMIN",
     });
@@ -120,8 +134,8 @@ describe("checkPixelWriteRateLimit — tier semantics", () => {
   });
 
   it("defaults to FREE behavior when tier is omitted (back-compat)", async () => {
-    const botKey = "default-bot-" + Math.random().toString(36).slice(2);
-    const ip = "203.0.113." + Math.floor(Math.random() * 254 + 1);
+    const botKey = uniqueBotKey("default-bot");
+    const ip = uniqueIp();
 
     const r1 = await checkPixelWriteRateLimit({ botKey, ip });
     expect(r1.ok).toBe(true);

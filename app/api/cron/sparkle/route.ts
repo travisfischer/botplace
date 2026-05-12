@@ -1,0 +1,146 @@
+// GET /api/cron/sparkle — M2.5 launch bot.
+//
+// Adds a glowing halo to the most recent non-self pixel write. Each tick:
+//   1. Read recent events from /api/v1/public/sectors/sector-1/events
+//      (filtering out sparkle's own writes by bot_name).
+//   2. If a non-self event exists, paint 8 sparkle pixels at cardinal +
+//      diagonal offsets from that anchor (skipping out-of-bounds).
+//   3. Each sparkle pixel is palette index 7 (off-white #dcf5ff), spaced
+//      ≥1.1s apart to honor the POWER tier rate limit.
+//
+// Visual: a soft halo follows whichever bot wrote most recently.
+//
+// If no non-self events in the last ~60s, sparkle sleeps this tick.
+
+import { randomUUID } from "node:crypto";
+
+import { log } from "@/lib/log";
+import {
+  fetchEvents,
+  fetchSectorMeta,
+  isAuthorizedCron,
+  sleep,
+  writePixel,
+} from "@/src/launch-bots/runner";
+
+const PATH = "/api/cron/sparkle";
+const SECTOR_ID = "sector-1";
+const SPARKLE_COLOR = 7; // off-white #dcf5ff
+const SELF_BOT_NAME = "m25-sparkle";
+// Offsets for the 8 surrounding pixels (cardinal + diagonal).
+const SPARKLE_OFFSETS: Array<[number, number]> = [
+  [-1, -1], [0, -1], [1, -1],
+  [-1, 0],          [1, 0],
+  [-1, 1],  [0, 1], [1, 1],
+];
+
+export async function GET(request: Request) {
+  const startedAt = Date.now();
+  const requestId = randomUUID();
+  if (!isAuthorizedCron(request)) {
+    log("warn", {
+      request_id: requestId,
+      path: PATH,
+      status: 404,
+      error_slug: "not_found",
+    });
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }
+
+  const apiKey = process.env.M25_SPARKLE_KEY;
+  if (!apiKey) {
+    log("error", {
+      request_id: requestId,
+      path: PATH,
+      status: 500,
+      error_slug: "missing_bot_key",
+    });
+    return Response.json({ error: "missing_bot_key" }, { status: 500 });
+  }
+
+  const signal = request.signal;
+
+  try {
+    // Pull recent events + sector dimensions in parallel.
+    const [events, meta] = await Promise.all([
+      fetchEvents(SECTOR_ID, 20, signal),
+      fetchSectorMeta(SECTOR_ID, signal),
+    ]);
+
+    // Most recent non-self event. /events returns descending by id, so
+    // the first non-self entry is the freshest.
+    const anchor = events.find((e) => e.bot_name !== SELF_BOT_NAME);
+    if (!anchor) {
+      log("info", {
+        request_id: requestId,
+        path: PATH,
+        status: 200,
+        bot_name: SELF_BOT_NAME,
+        sparkle_skipped: true,
+        reason: "no_non_self_event",
+        latency_ms: Date.now() - startedAt,
+      });
+      return Response.json({
+        bot: SELF_BOT_NAME,
+        skipped: true,
+        reason: "no_non_self_event",
+      });
+    }
+
+    log("info", {
+      request_id: requestId,
+      path: PATH,
+      status: 200,
+      bot_name: SELF_BOT_NAME,
+      anchor: { x: anchor.x, y: anchor.y, author: anchor.bot_name },
+    });
+
+    // Paint up to 8 sparkle pixels around the anchor, clipped to the
+    // canvas bounds.
+    const targets = SPARKLE_OFFSETS.map(([dx, dy]) => [anchor.x + dx, anchor.y + dy] as const).filter(
+      ([x, y]) => x >= 0 && y >= 0 && x < meta.width && y < meta.height,
+    );
+
+    let written = 0;
+    let firstError: string | undefined;
+    for (const [x, y] of targets) {
+      const result = await writePixel(
+        { apiKey, sectorId: SECTOR_ID, x, y, color: SPARKLE_COLOR },
+        signal,
+      );
+      if (!result.ok) {
+        firstError = firstError ?? result.error;
+        break;
+      }
+      written++;
+      await sleep(1100, signal);
+    }
+
+    log("info", {
+      request_id: requestId,
+      path: PATH,
+      status: 200,
+      bot_name: SELF_BOT_NAME,
+      pixels_written: written,
+      latency_ms: Date.now() - startedAt,
+      ...(firstError ? { error_slug: firstError } : {}),
+    });
+
+    return Response.json({
+      bot: SELF_BOT_NAME,
+      anchor: { x: anchor.x, y: anchor.y },
+      pixels_written: written,
+      ...(firstError ? { first_error: firstError } : {}),
+    });
+  } catch (err) {
+    log("error", {
+      request_id: requestId,
+      path: PATH,
+      status: 500,
+      error_slug: "internal_error",
+      error_class: err instanceof Error ? err.constructor.name : "unknown",
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json({ error: "internal_error" }, { status: 500 });
+  }
+}
