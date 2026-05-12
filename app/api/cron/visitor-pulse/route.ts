@@ -28,16 +28,19 @@ import {
   sleep,
   writePixel,
 } from "@/src/launch-bots/runner";
+import {
+  BLOCK_PX,
+  blockDiff,
+  computeNewLastBlocks,
+  pixelsForBlock,
+  viewersToBlocks,
+} from "@/src/launch-bots/visitor-pulse-logic";
 
 const PATH = "/api/cron/visitor-pulse";
 const SECTOR_ID = "sector-1";
 const LIT_COLOR = 6; // yellow #e6c86e
 const DEFAULT_COLOR = 0; // black, used to dark out previously-lit blocks
 const REDIS_KEY = `botplace:m25:visitor-pulse:last_blocks:${SECTOR_ID}`;
-// Block layout: each meter unit is a 2x2 pixel square in the top-left
-// of the canvas. Block N occupies pixels (2N, 0), (2N+1, 0), (2N, 1),
-// (2N+1, 1).
-const BLOCK_PX = 2;
 
 let redis: Redis | null = null;
 function getRedis(): Redis | null {
@@ -49,13 +52,6 @@ function getRedis(): Redis | null {
   if (!url || !token) return null;
   redis = new Redis({ url, token });
   return redis;
-}
-
-/** Log-scale: 1→1, 10→10, 100→20, 1000→30 blocks. Capped at maxBlocks. */
-function viewersToBlocks(active: number, maxBlocks: number): number {
-  if (active <= 0) return 0;
-  const blocks = Math.round(10 * Math.log10(active + 1));
-  return Math.min(blocks, maxBlocks);
 }
 
 export async function GET(request: Request) {
@@ -123,10 +119,7 @@ export async function GET(request: Request) {
     // Diff: blocks newly lit (previous → target, lit up the new range)
     // and blocks newly dark (target → previous, darken the previously-
     // lit range past target).
-    const toLight: number[] = [];
-    const toDark: number[] = [];
-    for (let b = previousBlocks; b < targetBlocks; b++) toLight.push(b);
-    for (let b = targetBlocks; b < previousBlocks; b++) toDark.push(b);
+    const { toLight, toDark } = blockDiff(previousBlocks, targetBlocks);
 
     log("info", {
       request_id: requestId,
@@ -150,16 +143,14 @@ export async function GET(request: Request) {
       ...toDark.map((b) => ({ block: b, color: DEFAULT_COLOR })),
     ];
 
+    // Track whether the current block being painted is in the LIGHT-up
+    // phase (LIT_COLOR) or the DARK-out phase (DEFAULT_COLOR). The
+    // partial-progress accounting below uses this to decide whether
+    // it's safe to advance `last_blocks` past `previousBlocks`.
+    let wasLighting = false;
     for (const { block, color } of blocksToPaint) {
-      const xBase = block * BLOCK_PX;
-      // 2x2 block: 4 pixels.
-      const pixels: Array<[number, number]> = [
-        [xBase, 0],
-        [xBase + 1, 0],
-        [xBase, 1],
-        [xBase + 1, 1],
-      ];
-      for (const [x, y] of pixels) {
+      wasLighting = color === LIT_COLOR;
+      for (const [x, y] of pixelsForBlock(block)) {
         const result = await writePixel(
           { apiKey, sectorId: SECTOR_ID, x, y, color, parentRequestId: requestId },
           signal,
@@ -179,16 +170,16 @@ export async function GET(request: Request) {
       if (firstError) break;
     }
 
-    // Persist the new last_blocks count. Use the highest block index we
-    // successfully painted so a partial diff doesn't lose progress.
-    let newLastBlocks = previousBlocks;
-    if (!firstError) {
-      newLastBlocks = targetBlocks;
-    } else if (toLight.length > 0 && written > 0) {
-      // We were lighting up new blocks and got partway; persist progress.
-      const fullBlocksLit = Math.floor(written / 4);
-      newLastBlocks = previousBlocks + fullBlocksLit;
-    }
+    // Persist the new last_blocks count. Pure helper handles the four
+    // outcomes (clean finish, light-phase partial, dark-phase partial,
+    // dark-phase clean prefix).
+    const newLastBlocks = computeNewLastBlocks({
+      previousBlocks,
+      targetBlocks,
+      writtenPixels: written,
+      errored: firstError !== undefined,
+      wasLighting,
+    });
     if (r && newLastBlocks !== previousBlocks) {
       await r.set(REDIS_KEY, newLastBlocks);
     }

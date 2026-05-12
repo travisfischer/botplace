@@ -13,14 +13,17 @@ Read [`docs/design/principles.md`](docs/design/principles.md) before making non-
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-## Requirement document lifecycle
+## Milestone lifecycle
 
-Requirement docs under `plans/requirements/` carry a frontmatter `status:` field. Convention:
+A milestone moves through three planning artifacts:
 
-- `draft` — open questions outstanding; design still in flux.
-- `ready` — questions resolved, ready for implementation. (Optional intermediate state.)
-- `shipped` — code merged and deployed to production. Add a sibling `shipped: <YYYY-MM-DD>` field on the same flip.
+1. **Brainstorm** at `plans/brainstorms/<YYYY-MM-DD>-<topic>.md` — explores the problem, lists trade-offs, surfaces open questions. Required for any work scoped larger than a single PR or with non-obvious design decisions. A small sub-milestone (e.g. M2.5) may skip a standalone brainstorm if the requirement doc's "Resolved decisions" section already captures the scoping exploration; record the choice in the requirement itself.
+2. **Requirement** at `plans/requirements/requirement-<YYYYMMDD>-<HHMM>-<topic>.md` — locks scope, decisions, and risks. Carries a frontmatter `status:` field:
+   - `draft` — open questions outstanding; design still in flux.
+   - `ready` — questions resolved, ready for implementation. (Optional intermediate state.)
+   - `shipped` — code merged and deployed to production. Add a sibling `shipped: <YYYY-MM-DD>` field on the same flip.
 
-Flip `draft` → `shipped` on the same branch as the milestone PR (or as the final post-merge commit) so the requirement doc honestly reflects the world. Don't leave a shipped milestone with `status: draft` — future readers hit cognitive friction trying to figure out what's real.
+   Flip `draft` → `shipped` on the same branch as the milestone PR (or as the final post-merge commit) so the requirement doc honestly reflects the world. Don't leave a shipped milestone at `status: draft` — future readers hit cognitive friction trying to figure out what's real.
+3. **Review** at `plans/reviews/review-<YYYYMMDD>-<HHMM>-<milestone-slug>.md` — synthesized multi-principle review, written before merge (see M0/M1/M2/M2.5 for shape).
 
-Each milestone should also have a synthesized review at `plans/reviews/review-<YYYYMMDD>-<HHMM>-<milestone-slug>.md` before merge (see M0/M1/M2/M2.5 for shape). Sub-milestones may use the parent's "Resolved decisions" section in lieu of a separate brainstorm.
+The requirement+review pair is non-negotiable for any milestone-sized change. The brainstorm is recommended; skipped only when the trade-off space is already captured elsewhere.

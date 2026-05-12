@@ -71,6 +71,24 @@ else
   printf '  %s○%s UPSTASH/KV REST URL + TOKEN absent  %s(dev fallback active)%s\n' "$DIM" "$CLR" "$DIM" "$CLR"
 fi
 
+# M2.5 launch-bot keys + cron secret + soft-launch flag are
+# production-only: cron routes consume them at runtime. Local dev
+# doesn't read these. The section is informational — never required.
+section "M2.5 launch bots (production-only — set via Vercel project env):"
+m25_warn=0
+for v in M25_VISITOR_PULSE_KEY M25_SPARKLE_KEY M25_CONWAY_KEY CRON_SECRET M25_BOTS_ENABLED; do
+  val=$(eval "printf '%s' \"\${$v:-}\"")
+  if [ -n "$val" ]; then
+    printf '  %s✓%s %s\n' "$GRN" "$CLR" "$v"
+  else
+    printf '  %s○%s %s  %s(unset — fine in dev; required in prod)%s\n' "$DIM" "$CLR" "$v" "$DIM" "$CLR"
+    m25_warn=$((m25_warn+1))
+  fi
+done
+if [ "$m25_warn" -gt 0 ]; then
+  printf '  %sFor prod provisioning see docs/dev/probes/m2.5-launch-bots.md.%s\n' "$DIM" "$CLR"
+fi
+
 printf '\n'
 if [ "$missing" -gt 0 ]; then
   printf '%s%d required env var(s) missing.%s\n' "$RED" "$missing" "$CLR"

@@ -79,6 +79,7 @@ Run `pnpm op env:check` to confirm everything resolves correctly — it reports 
 - [Corepack](https://nodejs.org/api/corepack.html) (ships with Node; enable once with `corepack enable`)
 - [1Password CLI](https://developer.1password.com/docs/cli/) (`op`) signed in — see [secrets.md](secrets.md)
 - A Postgres connection string. Easiest option: a Neon project's "development" branch URL.
+- For production-only ops scripts (e.g. the M2.5 launch-bots probe): [Vercel CLI](https://vercel.com/docs/cli) (`vercel`) and the GitHub CLI (`gh`). Not needed for day-to-day dev.
 
 ### Getting Node 24
 
@@ -189,6 +190,8 @@ Production uses Upstash Redis for rate limiting. Local dev has **no Upstash depe
 | `pnpm db:generate` | Regenerate the Prisma client |
 | `pnpm db:migrate:dev` | Create + apply a new migration in dev (refuses to run on `dev-main` or production) |
 | `pnpm db:migrate:deploy` | Apply pending migrations (used in CI/Vercel) |
+| `pnpm admin:set-bot-tier <bot-id> <FREE\|POWER>` | Set a bot's rate tier via `PUT /api/v1/admin/bots/:id/tier`. Needs `ADMIN_TOKEN` in process env |
+| `pnpm m25:seed-launch-bots --owner-email <email>` | One-time provisioning of the three M2.5 launch bots (`m25-visitor-pulse`, `m25-sparkle`, `m25-conway`) at POWER tier. Idempotent. See [`docs/dev/probes/m2.5-launch-bots.md`](probes/m2.5-launch-bots.md) for the full rollout |
 
 ## Verifying the setup
 

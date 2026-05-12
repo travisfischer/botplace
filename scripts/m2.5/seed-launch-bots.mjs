@@ -16,15 +16,23 @@
 //     and the bot_id (key rotation is an explicit separate action).
 //
 // Usage:
+//   # Local dev (pepper + DATABASE_URL come from .env):
 //   pnpm op m25:seed-launch-bots --owner-email travis@folkforest.com
 //
+//   # Production seeding (pepper + DATABASE_URL come from Vercel env):
+//   vercel env pull --environment=production /tmp/m25-prod-env
+//   set -a; source /tmp/m25-prod-env; set +a
+//   pnpm m25:seed-launch-bots --owner-email travis@folkforest.com
+//
 // Reads BOTPLACE_API_KEY_PEPPER + DATABASE_URL from .env (loaded via
-// dotenv/config below). The owner email is supplied as a script
-// argument so the script has no hardcoded identity.
+// dotenv/config below) OR from process env when those are already set
+// — see `docs/dev/probes/m2.5-launch-bots.md` for the prod path. The
+// owner email is supplied as a script argument so the script has no
+// hardcoded identity.
 //
 // Cleanup: delete the bot rows manually (and their api_keys + any
 // pixel_events they wrote) if you want to re-mint. Or use
-// `pnpm op admin:set-bot-tier <bot_id> FREE` to demote them.
+// `pnpm admin:set-bot-tier <bot_id> FREE` to demote them.
 
 import "dotenv/config";
 import { createHmac, randomBytes } from "node:crypto";
@@ -37,12 +45,22 @@ const DB_URL = process.env.DATABASE_URL;
 
 if (!PEPPER || PEPPER.length < 64) {
   console.error(
-    "ERROR: BOTPLACE_API_KEY_PEPPER missing or too short. Run `pnpm op db:bootstrap` first.",
+    "ERROR: BOTPLACE_API_KEY_PEPPER missing or too short (need ≥ 64 chars).\n" +
+      "  For local dev: pnpm op db:bootstrap   (generates a disposable per-branch pepper)\n" +
+      "  For prod seed: vercel env pull --environment=production /tmp/m25-prod-env\n" +
+      "                 set -a; source /tmp/m25-prod-env; set +a\n" +
+      "  Never reuse the dev pepper for prod — keys hashed with the wrong pepper\n" +
+      "  silently fail auth.",
   );
   process.exit(2);
 }
 if (!DB_URL) {
-  console.error("ERROR: DATABASE_URL missing. Run `pnpm op db:bootstrap` first.");
+  console.error(
+    "ERROR: DATABASE_URL missing.\n" +
+      "  For local dev: pnpm op db:bootstrap\n" +
+      "  For prod seed: vercel env pull --environment=production /tmp/m25-prod-env\n" +
+      "                 set -a; source /tmp/m25-prod-env; set +a",
+  );
   process.exit(2);
 }
 
@@ -57,7 +75,8 @@ const { values } = parseArgs({
 
 if (values.help || !values["owner-email"]) {
   console.error(
-    "usage: pnpm op m25:seed-launch-bots --owner-email <email>\n" +
+    "usage: pnpm m25:seed-launch-bots --owner-email <email>\n" +
+      "  (or `pnpm op m25:seed-launch-bots ...` for local dev with op-wrapper)\n" +
       "  Creates m25-visitor-pulse, m25-sparkle, m25-conway under the owner\n" +
       "  with the given email (must already exist in the owners table).\n" +
       "  Idempotent: skips bots that already exist.",

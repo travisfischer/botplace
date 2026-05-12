@@ -23,17 +23,15 @@ import {
   sleep,
   writePixel,
 } from "@/src/launch-bots/runner";
+import {
+  SPARKLE_COLOR,
+  pickNonSelfAnchor,
+  sparkleTargets,
+} from "@/src/launch-bots/sparkle-logic";
 
 const PATH = "/api/cron/sparkle";
 const SECTOR_ID = "sector-1";
-const SPARKLE_COLOR = 7; // off-white #dcf5ff
 const SELF_BOT_NAME = "m25-sparkle";
-// Offsets for the 8 surrounding pixels (cardinal + diagonal).
-const SPARKLE_OFFSETS: Array<[number, number]> = [
-  [-1, -1], [0, -1], [1, -1],
-  [-1, 0],          [1, 0],
-  [-1, 1],  [0, 1], [1, 1],
-];
 
 export async function GET(request: Request) {
   const startedAt = Date.now();
@@ -88,7 +86,7 @@ export async function GET(request: Request) {
 
     // Most recent non-self event. /events returns descending by id, so
     // the first non-self entry is the freshest.
-    const anchor = events.find((e) => e.bot_name !== SELF_BOT_NAME);
+    const anchor = pickNonSelfAnchor(events, SELF_BOT_NAME);
     if (!anchor) {
       log("info", {
         request_id: requestId,
@@ -116,9 +114,7 @@ export async function GET(request: Request) {
 
     // Paint up to 8 sparkle pixels around the anchor, clipped to the
     // canvas bounds.
-    const targets = SPARKLE_OFFSETS.map(([dx, dy]) => [anchor.x + dx, anchor.y + dy] as const).filter(
-      ([x, y]) => x >= 0 && y >= 0 && x < meta.width && y < meta.height,
-    );
+    const targets = sparkleTargets(anchor.x, anchor.y, meta.width, meta.height);
 
     let written = 0;
     let firstError: string | undefined;
