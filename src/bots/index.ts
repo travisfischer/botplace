@@ -7,6 +7,11 @@ import { mintKey } from "@/src/auth/api-keys";
 
 export type BotStatus = "ACTIVE" | "REVOKED";
 
+// Mirrors `BotRateTier` from the Prisma schema. Kept as a string union
+// so this module stays edge-runtime friendly (no Prisma client import
+// at type level only).
+export type BotRateTier = "FREE" | "POWER" | "ADMIN";
+
 /**
  * Audit-trail context plumbed in from the HTTP layer. When present, every
  * credential lifecycle event (mint, rotate, revoke) writes an
@@ -32,6 +37,7 @@ export interface BotSummary {
   id: string;
   name: string;
   status: BotStatus;
+  rateTier: BotRateTier;
   createdAt: Date;
   apiKeys: BotApiKeySummary[];
 }
@@ -47,6 +53,7 @@ export interface CreateBotResult {
   id: string;
   name: string;
   status: BotStatus;
+  rateTier: BotRateTier;
   createdAt: Date;
   apiKey: MintedBotApiKey;
 }
@@ -59,9 +66,18 @@ export async function createBotForOwner(input: {
   auditContext?: AuditContext;
 }): Promise<CreateBotResult> {
   return prisma.$transaction(async (tx) => {
+    // Owner-facing create path. `rateTier` is intentionally NOT settable
+    // here — owner-minted bots are always FREE. Only the operator
+    // `pnpm op bot:set-tier` script can elevate (M2.5).
     const bot = await tx.bot.create({
       data: { ownerId: input.ownerId, name: input.name },
-      select: { id: true, name: true, status: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        rateTier: true,
+        createdAt: true,
+      },
     });
     const minted = mintKey("bp_live", input.pepper);
     const key = await tx.botApiKey.create({
@@ -89,6 +105,7 @@ export async function createBotForOwner(input: {
       id: bot.id,
       name: bot.name,
       status: bot.status,
+      rateTier: bot.rateTier,
       createdAt: bot.createdAt,
       apiKey: {
         id: key.id,
@@ -110,6 +127,7 @@ export async function listBotsForOwner(
       id: true,
       name: true,
       status: true,
+      rateTier: true,
       createdAt: true,
       apiKeys: {
         select: {
@@ -234,6 +252,7 @@ export function botSummaryToJson(b: BotSummary) {
     id: b.id,
     name: b.name,
     status: b.status,
+    rate_tier: b.rateTier,
     created_at: b.createdAt.toISOString(),
     api_keys: b.apiKeys.map(botApiKeySummaryToJson),
   };
@@ -253,6 +272,7 @@ export function createBotResultToJson(r: CreateBotResult) {
     id: r.id,
     name: r.name,
     status: r.status,
+    rate_tier: r.rateTier,
     created_at: r.createdAt.toISOString(),
     api_key: mintedBotApiKeyToJson(r.apiKey),
   };

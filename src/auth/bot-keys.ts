@@ -3,6 +3,7 @@
 // for audit). Used by the pixel-write API.
 
 import { prisma } from "@/lib/prisma";
+import type { BotRateTier } from "@/generated/prisma/enums";
 import { hashKey } from "./api-keys";
 import { authFail, authOk, type AuthResult } from "./result";
 
@@ -10,6 +11,7 @@ export interface BotKeyAuth {
   ownerId: string;
   botId: string;
   apiKeyId: string;
+  rateTier: BotRateTier;
 }
 
 /**
@@ -39,7 +41,9 @@ export async function botKeyAuth(
     select: {
       id: true,
       revokedAt: true,
-      bot: { select: { id: true, ownerId: true, status: true } },
+      bot: {
+        select: { id: true, ownerId: true, status: true, rateTier: true },
+      },
     },
   });
   if (!row) return authFail("unknown_key");
@@ -53,5 +57,6 @@ export async function botKeyAuth(
     ownerId: row.bot.ownerId,
     botId: row.bot.id,
     apiKeyId: row.id,
+    rateTier: row.bot.rateTier,
   });
 }

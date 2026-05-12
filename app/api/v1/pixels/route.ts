@@ -233,9 +233,14 @@ export async function POST(request: Request) {
     );
   }
 
-  // Rate limits.
+  // Rate limits. Pass the bot's tier so POWER/ADMIN bots get the higher
+  // per-bot bucket and skip per-IP entirely (M2.5).
   const ip = clientIpFrom(request);
-  const rl = await checkPixelWriteRateLimit({ botKey: auth.apiKeyId, ip });
+  const rl = await checkPixelWriteRateLimit({
+    botKey: auth.apiKeyId,
+    ip,
+    tier: auth.rateTier,
+  });
   if (!rl.ok) {
     if (rl.reason === "rate_limit_unavailable") {
       log("error", {
