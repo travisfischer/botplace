@@ -25,7 +25,8 @@ interface BucketState {
  * Token bucket with `capacity` max tokens and one refill every
  * `refillIntervalMs`. Fresh buckets start at capacity (first request always
  * succeeds). The `now` injection is for tests; production callers omit it
- * and get `Date.now` by default.
+ * and get `Date.now` (looked up at call time, not at construction time, so
+ * `vi.useFakeTimers()` + `vi.setSystemTime()` work correctly).
  */
 export class MemoryTokenBucket implements Limiter {
   private readonly buckets = new Map<string, BucketState>();
@@ -33,7 +34,7 @@ export class MemoryTokenBucket implements Limiter {
   constructor(
     private readonly capacity: number,
     private readonly refillIntervalMs: number,
-    private readonly now: () => number = Date.now,
+    private readonly now: () => number = () => Date.now(),
   ) {}
 
   async limit(key: string): Promise<LimiterResult> {

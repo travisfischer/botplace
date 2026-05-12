@@ -50,6 +50,17 @@ const WRITE_BOT: BucketConfig = {
   refillIntervalString: "60 s",
   prefix: "botplace:rl:bot",
 };
+// POWER tier per-bot write bucket. 1 token / 1s, capacity 60 — so a
+// POWER bot can burst up to 60 writes immediately and then sustain 60
+// writes/min indefinitely. POWER also bypasses the per-IP bucket (see
+// checkPixelWriteRateLimit); both are M2.5 product features behind
+// `Bot.rateTier`.
+const WRITE_BOT_POWER: BucketConfig = {
+  capacity: 60,
+  refillIntervalMs: 1_000,
+  refillIntervalString: "1 s",
+  prefix: "botplace:rl:bot_power",
+};
 const WRITE_IP: BucketConfig = {
   capacity: 1,
   refillIntervalMs: 60_000,
@@ -89,6 +100,7 @@ const PUBLIC_READ: BucketConfig = {
 
 interface LimiterCache {
   bot: Limiter;
+  botPower: Limiter;
   ip: Limiter;
   read: Limiter;
   ownerWrite: Limiter;
@@ -170,6 +182,7 @@ function getLimiters(): LimiterCache {
     const redis = new Redis({ url, token });
     cached = {
       bot: adaptUpstashLimiter(redis, WRITE_BOT),
+      botPower: adaptUpstashLimiter(redis, WRITE_BOT_POWER),
       ip: adaptUpstashLimiter(redis, WRITE_IP),
       read: adaptUpstashLimiter(redis, READ),
       ownerWrite: adaptUpstashLimiter(redis, OWNER_WRITE),
@@ -194,6 +207,10 @@ function getLimiters(): LimiterCache {
   }
   cached = {
     bot: new MemoryTokenBucket(WRITE_BOT.capacity, WRITE_BOT.refillIntervalMs),
+    botPower: new MemoryTokenBucket(
+      WRITE_BOT_POWER.capacity,
+      WRITE_BOT_POWER.refillIntervalMs,
+    ),
     ip: new MemoryTokenBucket(WRITE_IP.capacity, WRITE_IP.refillIntervalMs),
     read: new MemoryTokenBucket(READ.capacity, READ.refillIntervalMs),
     ownerWrite: new MemoryTokenBucket(
@@ -268,10 +285,19 @@ function toState(r: LimiterResult): BucketState {
   return { remaining: r.remaining, reset: r.reset };
 }
 
+// Tier identifier mirrors `BotRateTier` from Prisma. Kept as a string
+// union so this module doesn't import the Prisma client and stays
+// usable from the Edge runtime (middleware).
+export type RateTier = "FREE" | "POWER";
+
 export async function checkPixelWriteRateLimit(input: {
   botKey: string;
   ip: string;
+  // Defaults to FREE so existing call sites that haven't been updated
+  // can't accidentally promote a bot to a faster bucket.
+  tier?: RateTier;
 }): Promise<WriteRateLimitOutcome> {
+  const tier: RateTier = input.tier ?? "FREE";
   let limiters: LimiterCache;
   try {
     limiters = getLimiters();
@@ -279,20 +305,35 @@ export async function checkPixelWriteRateLimit(input: {
     return { ok: false, reason: "rate_limit_unavailable" };
   }
   try {
-    const botResult = await limiters.bot.limit(input.botKey);
+    // FREE bots use the strict 1/60s bot bucket. POWER uses the
+    // 1/sec/capacity-60 bucket. The per-IP bucket only applies to FREE
+    // — POWER bots typically share an egress IP (Vercel function
+    // origin, etc.) and the per-IP bucket would block them.
+    const useBotBucket = tier === "FREE" ? limiters.bot : limiters.botPower;
+    const botResult = await useBotBucket.limit(input.botKey);
     if (!botResult.success) {
       return {
         ok: false,
         reason: "rate_limited",
         scope: "bot",
         bot: toState(botResult),
-        // IP bucket wasn't touched — give the caller a best-effort snapshot
-        // (capacity full / reset window of the IP bucket) rather than
-        // burning a token to learn its exact state.
+        // IP bucket wasn't touched — give the caller a best-effort snapshot.
         ip: { remaining: 1, reset: Date.now() + 60_000 },
         retryAfterSeconds: retryAfter(botResult.reset),
       };
     }
+
+    // POWER: skip the per-IP bucket entirely.
+    if (tier !== "FREE") {
+      return {
+        ok: true,
+        bot: toState(botResult),
+        // No IP bucket touched; return a synthetic "wide open" snapshot
+        // so response headers still reflect a remaining count.
+        ip: { remaining: 1, reset: Date.now() + 60_000 },
+      };
+    }
+
     const ipResult = await limiters.ip.limit(input.ip);
     if (!ipResult.success) {
       return {

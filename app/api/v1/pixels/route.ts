@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 
 import { parseAuthHeader } from "@/src/auth/api-keys";
 import { botKeyAuth } from "@/src/auth/bot-keys";
-import type { AuthFailureReason } from "@/lib/log";
+import type { AuthFailureReason, LogFields, LogLevel } from "@/lib/log";
 import { log } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { isValidColorIndex } from "@/src/palettes";
@@ -21,6 +21,27 @@ import {
 } from "@/lib/rate-limit";
 
 const PATH = "/api/v1/pixels";
+
+// Header for upstream request-id propagation. The M2.5 cron-driven
+// launch bots set this so an operator can stitch a cron tick's log to
+// the resulting `/api/v1/pixels` log via `parent_request_id`. Third-party
+// bots may set it for the same purpose; never trusted as authentication.
+const PARENT_REQUEST_ID_HEADER = "x-botplace-parent-request-id";
+// Header values are clamped to keep log-injection budget small. The
+// cron tick uses a UUID (36 chars); anything appreciably longer is junk.
+const PARENT_REQUEST_ID_MAX_LEN = 128;
+
+function readParentRequestId(request: Request): string | undefined {
+  const raw = request.headers.get(PARENT_REQUEST_ID_HEADER);
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  if (trimmed.length > PARENT_REQUEST_ID_MAX_LEN) return undefined;
+  // Only accept printable ASCII (UUIDs etc.). Reject anything that could
+  // smuggle control characters into the log stream.
+  if (!/^[\x21-\x7e]+$/.test(trimmed)) return undefined;
+  return trimmed;
+}
 
 // Cap on the JSON body size. The legitimate body is ~80 bytes; anything
 // over this is either junk or malicious. Rejecting before parse keeps a
@@ -50,7 +71,7 @@ function unauthorized(
   requestId: string,
   startedAt: number,
   reason: AuthFailureReason,
-  context: { bot_id?: string; owner_id?: string } = {},
+  context: { bot_id?: string; owner_id?: string; parent_request_id?: string } = {},
 ): Response {
   log("warn", {
     request_id: requestId,
@@ -69,11 +90,25 @@ function unauthorized(
 export async function POST(request: Request) {
   const startedAt = Date.now();
   const requestId = randomUUID();
+  const parentRequestId = readParentRequestId(request);
+  // Tiny closure so every log call in this handler automatically
+  // carries `parent_request_id` when present (and `request_id` always),
+  // without having to spread the same context into every log invocation.
+  const lg = (level: LogLevel, fields: LogFields): void => {
+    log(level, {
+      request_id: requestId,
+      ...(parentRequestId ? { parent_request_id: parentRequestId } : {}),
+      ...fields,
+    });
+  };
+  // For the unauthorized helper, which doesn't have access to the closure.
+  const parentCtx: { parent_request_id?: string } = parentRequestId
+    ? { parent_request_id: parentRequestId }
+    : {};
 
   const pepper = process.env.BOTPLACE_API_KEY_PEPPER;
   if (!pepper) {
-    log("error", {
-      request_id: requestId,
+    lg("error", {
       path: PATH,
       status: 503,
       error_slug: "server_misconfigured",
@@ -88,19 +123,19 @@ export async function POST(request: Request) {
   // Auth: bot keys only.
   const authHeader = request.headers.get("authorization");
   if (authHeader === null) {
-    return unauthorized(requestId, startedAt, "missing_header");
+    return unauthorized(requestId, startedAt, "missing_header", parentCtx);
   }
   const token = parseAuthHeader(authHeader);
   if (!token) {
-    return unauthorized(requestId, startedAt, "malformed_header");
+    return unauthorized(requestId, startedAt, "malformed_header", parentCtx);
   }
   // PAT or admin token sent here is the wrong credential type, not malformed.
   if (!token.startsWith("bp_live_")) {
-    return unauthorized(requestId, startedAt, "wrong_credential_type");
+    return unauthorized(requestId, startedAt, "wrong_credential_type", parentCtx);
   }
   const authResult = await botKeyAuth(token, pepper);
   if (!authResult.ok) {
-    return unauthorized(requestId, startedAt, authResult.reason);
+    return unauthorized(requestId, startedAt, authResult.reason, parentCtx);
   }
   const auth = authResult.data;
 
@@ -109,8 +144,7 @@ export async function POST(request: Request) {
   // before any limit fires.
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 413,
       error_slug: "body_too_large",
@@ -130,8 +164,7 @@ export async function POST(request: Request) {
     | Record<string, unknown>
     | null;
   if (!body || typeof body !== "object") {
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 400,
       error_slug: "invalid_input",
@@ -155,8 +188,7 @@ export async function POST(request: Request) {
     typeof y !== "number" ||
     typeof color !== "number"
   ) {
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 400,
       error_slug: "invalid_input",
@@ -173,8 +205,7 @@ export async function POST(request: Request) {
 
   const sector = await getSector(sectorId);
   if (!sector) {
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 404,
       error_slug: "sector_not_found",
@@ -198,8 +229,7 @@ export async function POST(request: Request) {
     y < 0 ||
     y >= sector.height
   ) {
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 400,
       error_slug: "out_of_bounds",
@@ -216,8 +246,7 @@ export async function POST(request: Request) {
   }
 
   if (!isValidColorIndex(sector.paletteVersion, color)) {
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 400,
       error_slug: "invalid_color",
@@ -233,13 +262,17 @@ export async function POST(request: Request) {
     );
   }
 
-  // Rate limits.
+  // Rate limits. Pass the bot's tier so POWER bots get the higher
+  // per-bot bucket and skip per-IP entirely (M2.5).
   const ip = clientIpFrom(request);
-  const rl = await checkPixelWriteRateLimit({ botKey: auth.apiKeyId, ip });
+  const rl = await checkPixelWriteRateLimit({
+    botKey: auth.apiKeyId,
+    ip,
+    tier: auth.rateTier,
+  });
   if (!rl.ok) {
     if (rl.reason === "rate_limit_unavailable") {
-      log("error", {
-        request_id: requestId,
+      lg("error", {
         path: PATH,
         status: 503,
         error_slug: "rate_limit_unavailable",
@@ -255,8 +288,7 @@ export async function POST(request: Request) {
         { status: 503 },
       );
     }
-    log("warn", {
-      request_id: requestId,
+    lg("warn", {
       path: PATH,
       status: 429,
       error_slug: "rate_limited",
@@ -293,8 +325,7 @@ export async function POST(request: Request) {
       apiKeyId: auth.apiKeyId,
     });
 
-    log("info", {
-      request_id: requestId,
+    lg("info", {
       path: PATH,
       status: 200,
       auth_type: "bot_key",
@@ -318,8 +349,7 @@ export async function POST(request: Request) {
       { headers: pixelWriteRateLimitHeaders(rl.bot, rl.ip) },
     );
   } catch (err: unknown) {
-    log("error", {
-      request_id: requestId,
+    lg("error", {
       path: PATH,
       status: 500,
       auth_type: "bot_key",

@@ -22,6 +22,8 @@ Vendor automation tokens for the services this app integrates with. Each token i
 - `op://Agents/Botplace Upstash Redis/credential` — Upstash REST token. URL is stored alongside as a `rest url` field. Both are process-env-only — never written to `.env`.
 - `op://Agents/Botplace Admin Token/credential` — static operator token for `/api/v1/admin/...` endpoints.
 
+The three M2.5 launch-bot keys (`M25_VISITOR_PULSE_KEY`, `M25_SPARKLE_KEY`, `M25_CONWAY_KEY`) and the cron secret (`CRON_SECRET`) deliberately do **not** live in 1Password. They're minted by `pnpm m25:seed-launch-bots` directly into Vercel project env (Production scope) — operator-scoped, application-managed, and rotatable via `pnpm bot:rotate-key` if exposed. See [`probes/m2.5-launch-bots.md`](probes/m2.5-launch-bots.md).
+
 **Naming convention note:** item titles should not contain `(`, `)`, or other characters that 1Password CLI treats as special in `op://` references. Use `Botplace <Service>` (space-separated, no parens) so refs work as plain `op://Agents/<title>/credential`.
 
 Add an entry when introducing a new secret. If a needed item is missing from 1Password, ask the user to create it rather than inventing a path.

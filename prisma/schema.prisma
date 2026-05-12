@@ -16,6 +16,24 @@ enum BotStatus {
   REVOKED
 }
 
+// Rate-limit tier for a bot. M2.5 framework for future paid / trusted-
+// contributor upgrades.
+//   FREE  — default for every owner-minted bot. 1 write/60s/bot,
+//           1 write/60s/IP (the M1 spec).
+//   POWER — operator-issued. 1 write/sec/bot, capacity 60. Bypasses
+//           the per-IP bucket (POWER bots typically share an egress IP
+//           — Vercel function origin, GitHub Actions runner, etc. —
+//           and the IP bucket would block them).
+//
+// Only the admin-token path (pnpm admin:set-bot-tier) can elevate a bot
+// above FREE. Owner-facing routes (POST /api/v1/bots,
+// POST /api/v1/bots/:id/keys) hardcode FREE on creation. New tiers can
+// be added later via additive migration when a concrete use case lands.
+enum BotRateTier {
+  FREE
+  POWER
+}
+
 model Owner {
   id                   String                     @id @default(cuid())
   googleSub            String                     @unique @map("google_sub") // Google OAuth `sub`
@@ -55,6 +73,9 @@ model Bot {
   owner     Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   name      String
   status    BotStatus    @default(ACTIVE)
+  // Rate-limit tier. FREE on every owner-mint; POWER only via
+  // `pnpm admin:set-bot-tier`. See enum doc above.
+  rateTier  BotRateTier  @default(FREE) @map("rate_tier")
   createdAt DateTime     @default(now()) @map("created_at")
   apiKeys   BotApiKey[]
   events    PixelEvent[]

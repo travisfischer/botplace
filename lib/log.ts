@@ -26,6 +26,13 @@ export type AuthType =
 
 export interface LogFields {
   request_id?: string;
+  /**
+   * Upstream request id propagated via the `X-Botplace-Parent-Request-Id`
+   * header. Used by the M2.5 cron-driven launch bots so an operator can
+   * pivot from a cron-tick log line to the `/api/v1/pixels` log line it
+   * generated.
+   */
+  parent_request_id?: string;
   path?: string;
   status?: number;
   error_slug?: string;
