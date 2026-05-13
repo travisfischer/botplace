@@ -64,60 +64,81 @@ export async function GET(
   }
   const rlHeaders = publicReadRateLimitHeaders(rl.publicRead);
 
-  // M2.5: sector_id is captured for forward compatibility (per-sector
-  // viewer counts) but the current edge middleware tracks one global
-  // bucket per minute. When we add multi-sector support, the middleware
-  // can switch to per-sector keys keyed on path segment.
-  const r = getRedis();
-  let active = 0;
-  if (r) {
-    try {
-      const now = Math.floor(Date.now() / 60_000);
-      const prev = now - 1;
-      // SUNION returns the union as a list; we only need its size.
-      // Pipeline: scard both, sum in code (cheaper than SUNIONSTORE).
-      const [curr, prevCount] = (await r
-        .pipeline()
-        .scard(`botplace:viewers:${now}`)
-        .scard(`botplace:viewers:${prev}`)
-        .exec()) as [number, number];
-      // SCARD overcounts uniques across minutes (a viewer present in
-      // both counts twice), but it's bounded by 2x and saves us the
-      // SUNION network cost. For "directional, not exact" purposes
-      // the bound is fine.
-      active = (curr ?? 0) + (prevCount ?? 0);
-    } catch (err) {
-      log("warn", {
-        request_id: requestId,
-        path,
-        status: 200,
-        auth_type: "public",
-        sector_id: sectorId,
-        error_slug: "viewers_read_failed",
-        error_class: err instanceof Error ? err.constructor.name : "unknown",
-      });
-      // Fall through with active=0; the endpoint is best-effort.
+  try {
+    // M2.5: sector_id is captured for forward compatibility (per-sector
+    // viewer counts) but the current edge middleware tracks one global
+    // bucket per minute. When we add multi-sector support, the middleware
+    // can switch to per-sector keys keyed on path segment.
+    const r = getRedis();
+    let active = 0;
+    if (r) {
+      try {
+        const now = Math.floor(Date.now() / 60_000);
+        const prev = now - 1;
+        // SUNION returns the union as a list; we only need its size.
+        // Pipeline: scard both, sum in code (cheaper than SUNIONSTORE).
+        const [curr, prevCount] = (await r
+          .pipeline()
+          .scard(`botplace:viewers:${now}`)
+          .scard(`botplace:viewers:${prev}`)
+          .exec()) as [number, number];
+        // SCARD overcounts uniques across minutes (a viewer present in
+        // both counts twice), but it's bounded by 2x and saves us the
+        // SUNION network cost. For "directional, not exact" purposes
+        // the bound is fine.
+        active = (curr ?? 0) + (prevCount ?? 0);
+      } catch (err) {
+        log("warn", {
+          request_id: requestId,
+          path,
+          status: 200,
+          auth_type: "public",
+          sector_id: sectorId,
+          error_slug: "viewers_read_failed",
+          error_class: err instanceof Error ? err.constructor.name : "unknown",
+          dependency: "upstash",
+        });
+        // Fall through with active=0; the endpoint is best-effort.
+      }
     }
-  }
 
-  log("info", {
-    request_id: requestId,
-    path,
-    status: 200,
-    auth_type: "public",
-    sector_id: sectorId,
-    viewer_count: active,
-    latency_ms: Date.now() - startedAt,
-  });
+    log("info", {
+      request_id: requestId,
+      path,
+      status: 200,
+      auth_type: "public",
+      sector_id: sectorId,
+      viewer_count: active,
+      latency_ms: Date.now() - startedAt,
+    });
 
-  return Response.json(
-    { active, window_seconds: WINDOW_SECONDS },
-    {
-      headers: {
-        "Cache-Control": CACHE_CONTROL,
-        "CDN-Cache-Control": CDN_CACHE_CONTROL,
-        ...rlHeaders,
+    return Response.json(
+      { active, window_seconds: WINDOW_SECONDS, request_id: requestId },
+      {
+        headers: {
+          "Cache-Control": CACHE_CONTROL,
+          "CDN-Cache-Control": CDN_CACHE_CONTROL,
+          ...rlHeaders,
+        },
       },
-    },
-  );
+    );
+  } catch (err) {
+    // Outer try/catch so any unexpected throw outside the rate-limit
+    // helper still surfaces a structured `internal_error` with
+    // `request_id` rather than Next's generic 500 page.
+    log("error", {
+      request_id: requestId,
+      path,
+      status: 500,
+      auth_type: "public",
+      sector_id: sectorId,
+      error_slug: "internal_error",
+      error_class: err instanceof Error ? err.constructor.name : "unknown",
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json(
+      { error: "internal_error", request_id: requestId },
+      { status: 500 },
+    );
+  }
 }

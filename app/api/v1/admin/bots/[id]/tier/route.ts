@@ -23,9 +23,12 @@ import { parseAuthHeader } from "@/src/auth/api-keys";
 import { clientIpFrom } from "@/lib/http";
 import { log } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
-import type { BotRateTier } from "@/generated/prisma/enums";
+import { BotRateTier } from "@/generated/prisma/enums";
 
-const VALID_TIERS: readonly BotRateTier[] = ["FREE", "POWER"];
+// Derived from the Prisma enum so this validator can never drift from
+// the schema. Adding a new tier in `prisma/schema.prisma` automatically
+// extends the accepted set here.
+const VALID_TIERS = Object.values(BotRateTier) as readonly BotRateTier[];
 
 function isAuthorizedAdmin(request: Request): boolean {
   const expected = process.env.ADMIN_TOKEN;

@@ -5,12 +5,14 @@
 import { prisma } from "@/lib/prisma";
 import { mintKey } from "@/src/auth/api-keys";
 
+// Single source of truth for the rate-tier enum lives in Prisma's
+// generated module. Re-exporting (rather than redeclaring) keeps the
+// type aligned with the schema and the admin route's runtime validator.
+// `lib/rate-limit.ts` keeps its own narrow alias on purpose so it stays
+// import-free of generated code.
+import { BotRateTier } from "@/generated/prisma/enums";
+export { BotRateTier };
 export type BotStatus = "ACTIVE" | "REVOKED";
-
-// Mirrors `BotRateTier` from the Prisma schema. Kept as a string union
-// so this module stays edge-runtime friendly (no Prisma client import
-// at type level only).
-export type BotRateTier = "FREE" | "POWER";
 
 /**
  * Audit-trail context plumbed in from the HTTP layer. When present, every
