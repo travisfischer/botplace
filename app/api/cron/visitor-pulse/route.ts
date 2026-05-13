@@ -3,13 +3,19 @@
 // Reserves the top two rows (y=0, y=1) as a 2x2-block "viewer meter."
 // On each tick:
 //   1. Read active viewer count from /api/v1/public/sectors/sector-1/viewers.
-//   2. Compute the new block count on a log scale (1 viewer → 1 block,
+//   2. Compute the target block count on a log scale (1 viewer → 1 block,
 //      10 → 10, 100 → 20, 1000 → 30, etc.). Capped at chunks_x*chunk_size/2
 //      total blocks across the canvas.
-//   3. Diff-paint against the previous block count (stored in Upstash):
-//      only write the blocks that just lit up (count increased) or just
-//      went dark (count decreased). Steady ±1 fluctuation = ~4 writes.
-//   4. Persist the new count in Upstash for next tick.
+//   3. Fully repaint every lit block (color 6 yellow) and dark every
+//      block that USED to be lit but no longer should be (color 0).
+//      Full-repaint is intentional: the meter self-heals against any
+//      cell that may have been stomped on (e.g. a sparkle revert that
+//      partially restored the wrong byte).
+//   4. Persist the new block count in Upstash for the next tick to
+//      know which blocks to dark.
+//
+// The meter strip (y=0..1) is reserved — Conway leaves it alone, and
+// sparkle skips anchors that fall into it.
 //
 // Triggered by Vercel cron `* * * * *` (every minute). Auth via the
 // CRON_SECRET; bot key M25_VISITOR_PULSE_KEY (POWER tier, set up by
@@ -30,16 +36,14 @@ import {
 } from "@/src/launch-bots/runner";
 import {
   BLOCK_PX,
-  blockDiff,
+  PIXELS_PER_BLOCK,
   computeNewLastBlocks,
-  pixelsForBlock,
+  planRepaint,
   viewersToBlocks,
 } from "@/src/launch-bots/visitor-pulse-logic";
 
 const PATH = "/api/cron/visitor-pulse";
 const SECTOR_ID = "sector-1";
-const LIT_COLOR = 6; // yellow #e6c86e
-const DEFAULT_COLOR = 0; // black, used to dark out previously-lit blocks
 // `:v1:` namespace lets us evolve the value shape (e.g. add per-block
 // color state) by bumping to `:v2:` without colliding with old data.
 // TTL on the set: 7 days — refreshes every tick while the bot is
@@ -47,6 +51,10 @@ const DEFAULT_COLOR = 0; // black, used to dark out previously-lit blocks
 // key doesn't sit in Upstash forever.
 const REDIS_KEY = `botplace:m25:v1:visitor-pulse:last_blocks:${SECTOR_ID}`;
 const REDIS_KEY_TTL_SECONDS = 60 * 60 * 24 * 7;
+// Cap writes per tick so a sudden viewer spike doesn't run past the
+// 60s function timeout (each write spaces ≥1.1s for the POWER tier).
+// At 45 writes × 1.1s = 49.5s, leaves a healthy buffer.
+const MAX_WRITES_PER_TICK = 45;
 
 let redis: Redis | null = null;
 function getRedis(): Redis | null {
@@ -125,10 +133,12 @@ export async function GET(request: Request) {
       if (typeof stored === "number") previousBlocks = stored;
     }
 
-    // Diff: blocks newly lit (previous → target, lit up the new range)
-    // and blocks newly dark (target → previous, darken the previously-
-    // lit range past target).
-    const { toLight, toDark } = blockDiff(previousBlocks, targetBlocks);
+    const plan = planRepaint({
+      previousBlocks,
+      targetBlocks,
+      maxBlocks,
+      maxWrites: MAX_WRITES_PER_TICK,
+    });
 
     log("info", {
       request_id: requestId,
@@ -138,57 +148,54 @@ export async function GET(request: Request) {
       viewer_count: viewers.active,
       target_blocks: targetBlocks,
       previous_blocks: previousBlocks,
-      to_light: toLight.length,
-      to_dark: toDark.length,
+      planned_writes: plan.length,
     });
 
-    // Write the diff. Each block = 4 pixel writes; spaced ≥1100ms apart
-    // to comfortably stay under the POWER tier's 1/sec/bot ceiling.
     let written = 0;
     let firstError: string | undefined;
     let firstErrorServerRequestId: string | undefined;
-    const blocksToPaint: Array<{ block: number; color: number }> = [
-      ...toLight.map((b) => ({ block: b, color: LIT_COLOR })),
-      ...toDark.map((b) => ({ block: b, color: DEFAULT_COLOR })),
-    ];
-
-    // Track whether the current block being painted is in the LIGHT-up
-    // phase (LIT_COLOR) or the DARK-out phase (DEFAULT_COLOR). The
-    // partial-progress accounting below uses this to decide whether
-    // it's safe to advance `last_blocks` past `previousBlocks`.
-    let wasLighting = false;
-    for (const { block, color } of blocksToPaint) {
-      wasLighting = color === LIT_COLOR;
-      for (const [x, y] of pixelsForBlock(block)) {
-        const result = await writePixel(
-          { apiKey, sectorId: SECTOR_ID, x, y, color, parentRequestId: requestId },
-          signal,
-        );
-        if (!result.ok) {
-          firstError = firstError ?? result.error;
-          firstErrorServerRequestId = firstErrorServerRequestId ?? result.serverRequestId;
-          // Stop if we hit rate limit / other error to avoid burning
-          // the rest of the budget. Next tick will pick up where we
-          // left off (the previousBlocks count in Redis is unchanged
-          // until we persist it at the end of this tick).
-          break;
-        }
-        written++;
-        await sleep(1100, signal);
+    // Track whether the in-flight pixel was a "light" or "dark" write
+    // so partial-progress accounting can pick a sensible new
+    // last_blocks (see computeNewLastBlocks for the cases).
+    let wasLighting = plan.length > 0 ? plan[0].phase === "light" : true;
+    for (const w of plan) {
+      wasLighting = w.phase === "light";
+      const result = await writePixel(
+        {
+          apiKey,
+          sectorId: SECTOR_ID,
+          x: w.x,
+          y: w.y,
+          color: w.color,
+          parentRequestId: requestId,
+        },
+        signal,
+      );
+      if (!result.ok) {
+        firstError = firstError ?? result.error;
+        firstErrorServerRequestId =
+          firstErrorServerRequestId ?? result.serverRequestId;
+        break;
       }
-      if (firstError) break;
+      written++;
+      if (written < plan.length) await sleep(1100, signal);
     }
 
-    // Persist the new last_blocks count. Pure helper handles the four
-    // outcomes (clean finish, light-phase partial, dark-phase partial,
-    // dark-phase clean prefix).
-    const newLastBlocks = computeNewLastBlocks({
-      previousBlocks,
-      targetBlocks,
-      writtenPixels: written,
-      errored: firstError !== undefined,
-      wasLighting,
-    });
+    // Decide what to persist. Clean tick → `targetBlocks` (the meter
+    // now reflects the live count). Mid-tick failure → fall back to
+    // partial-progress accounting against the diff baseline.
+    const newLastBlocks = firstError
+      ? computeNewLastBlocks({
+          previousBlocks,
+          targetBlocks,
+          writtenPixels: Math.max(
+            0,
+            written - Math.max(0, targetBlocks * PIXELS_PER_BLOCK),
+          ),
+          errored: true,
+          wasLighting,
+        })
+      : targetBlocks;
     if (r && newLastBlocks !== previousBlocks) {
       await r.set(REDIS_KEY, newLastBlocks, { ex: REDIS_KEY_TTL_SECONDS });
     }
@@ -199,6 +206,8 @@ export async function GET(request: Request) {
       status: 200,
       bot_name: "m25-visitor-pulse",
       pixels_written: written,
+      planned_writes: plan.length,
+      truncated: plan.length === MAX_WRITES_PER_TICK,
       latency_ms: Date.now() - startedAt,
       ...(firstError ? { error_slug: firstError } : {}),
       ...(firstErrorServerRequestId
@@ -212,6 +221,7 @@ export async function GET(request: Request) {
       target_blocks: targetBlocks,
       previous_blocks: previousBlocks,
       pixels_written: written,
+      planned_writes: plan.length,
       new_last_blocks: newLastBlocks,
       ...(firstError ? { first_error: firstError } : {}),
     });
