@@ -10,10 +10,11 @@
 // Body shape:
 //   { "rate_tier": "FREE" | "POWER" }
 //
-// Every successful call writes an AdminAuditEvent row with the
-// before/after tier values. Failed admin-auth attempts also write a
-// row (`action: "failed_admin_auth"`) so an attempted compromise
-// leaves a durable trail.
+// Successful calls write an AdminAuditEvent row with the before/after
+// tier values. Failed admin-auth attempts are recorded via structured
+// log only (not a DB row) so unauthenticated probing can't amplify
+// cheap HTTP into unbounded INSERTs. Alerting on attempted compromise
+// lives in the log layer.
 
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
@@ -43,30 +44,6 @@ function isAuthorizedAdmin(request: Request): boolean {
   }
 }
 
-async function recordFailedAdminAuth(
-  requestId: string,
-  request: Request,
-  path: string,
-): Promise<void> {
-  try {
-    await prisma.adminAuditEvent.create({
-      data: {
-        requestId,
-        action: "failed_admin_auth",
-        targetId: null,
-        payloadJson: {
-          path,
-          had_authorization_header:
-            request.headers.get("authorization") !== null,
-        },
-        sourceIp: clientIpFrom(request),
-      },
-    });
-  } catch {
-    // best-effort
-  }
-}
-
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -77,6 +54,8 @@ export async function PUT(
   const path = `/api/v1/admin/bots/${botId}/tier`;
 
   if (!isAuthorizedAdmin(request)) {
+    // Structured log only — no DB audit row. See revoke-key route for
+    // rationale (DOS-amplification avoidance).
     log("warn", {
       request_id: requestId,
       path,
@@ -86,9 +65,9 @@ export async function PUT(
         request.headers.get("authorization") === null
           ? "missing_header"
           : "unknown_key",
+      source_ip: clientIpFrom(request),
       latency_ms: Date.now() - startedAt,
     });
-    await recordFailedAdminAuth(requestId, request, path);
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 

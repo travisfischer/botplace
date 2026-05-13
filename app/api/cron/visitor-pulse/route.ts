@@ -40,7 +40,13 @@ const PATH = "/api/cron/visitor-pulse";
 const SECTOR_ID = "sector-1";
 const LIT_COLOR = 6; // yellow #e6c86e
 const DEFAULT_COLOR = 0; // black, used to dark out previously-lit blocks
-const REDIS_KEY = `botplace:m25:visitor-pulse:last_blocks:${SECTOR_ID}`;
+// `:v1:` namespace lets us evolve the value shape (e.g. add per-block
+// color state) by bumping to `:v2:` without colliding with old data.
+// TTL on the set: 7 days — refreshes every tick while the bot is
+// active, expires automatically if the bot is disabled/removed so the
+// key doesn't sit in Upstash forever.
+const REDIS_KEY = `botplace:m25:v1:visitor-pulse:last_blocks:${SECTOR_ID}`;
+const REDIS_KEY_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 let redis: Redis | null = null;
 function getRedis(): Redis | null {
@@ -89,13 +95,16 @@ export async function GET(request: Request) {
 
   const apiKey = process.env.M25_VISITOR_PULSE_KEY;
   if (!apiKey) {
+    // Byte-identical to the wrong-CRON_SECRET response so a brute-force
+    // guesser can't observe a status diff once they land on the right
+    // secret. Internal log keeps the discriminating slug.
     log("error", {
       request_id: requestId,
       path: PATH,
-      status: 500,
+      status: 404,
       error_slug: "missing_bot_key",
     });
-    return Response.json({ error: "missing_bot_key" }, { status: 500 });
+    return Response.json({ error: "not_found" }, { status: 404 });
   }
 
   const signal = request.signal;
@@ -181,7 +190,7 @@ export async function GET(request: Request) {
       wasLighting,
     });
     if (r && newLastBlocks !== previousBlocks) {
-      await r.set(REDIS_KEY, newLastBlocks);
+      await r.set(REDIS_KEY, newLastBlocks, { ex: REDIS_KEY_TTL_SECONDS });
     }
 
     log("info", {

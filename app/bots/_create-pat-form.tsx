@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { MAX_NAME_LENGTH } from "@/lib/limits";
 import { createPatAction, type CreatePatState } from "./_actions";
 
 const INITIAL: CreatePatState | null = null;
@@ -24,7 +25,7 @@ export function CreatePatForm() {
           name="name"
           required
           minLength={1}
-          maxLength={64}
+          maxLength={MAX_NAME_LENGTH}
           placeholder="token label, e.g. my-laptop"
           disabled={pending}
         />

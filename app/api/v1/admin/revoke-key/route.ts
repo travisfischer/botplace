@@ -1,8 +1,10 @@
 // POST /api/v1/admin/revoke-key — operator endpoint to revoke any bot
 // API key by id. Gated by ADMIN_TOKEN. Missing/wrong token returns 404
 // (not 401) so the path's existence isn't advertised to external probers.
-// Every successful call inserts an AdminAuditEvent row; failed admin-auth
-// attempts also write an audit row so an attempted compromise is durable.
+// Successful calls insert an AdminAuditEvent row; failed admin-auth
+// attempts are recorded via structured log only (not a DB row) so an
+// unauthenticated probe can't amplify cheap HTTP into unbounded INSERTs.
+// Alerting on attempted compromise lives in the log layer.
 
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
@@ -39,35 +41,6 @@ function isAuthorizedAdmin(request: Request): boolean {
   }
 }
 
-async function recordFailedAdminAuth(
-  requestId: string,
-  request: Request,
-): Promise<void> {
-  // Audit FAILED admin auth attempts so an attempted compromise leaves a
-  // durable trail (the console warn alone is too easy to miss). Errors on
-  // the audit insert are swallowed to keep the response 404 deterministic
-  // and to avoid leaking DB issues to a probing caller.
-  try {
-    await prisma.adminAuditEvent.create({
-      data: {
-        requestId,
-        action: "failed_admin_auth",
-        targetId: null,
-        payloadJson: {
-          path: PATH,
-          // Don't store the rejected token (even hashed). The point is the
-          // attempted access, not the credential itself.
-          had_authorization_header:
-            request.headers.get("authorization") !== null,
-        },
-        sourceIp: clientIpFrom(request),
-      },
-    });
-  } catch {
-    // ignore — telemetry is best-effort
-  }
-}
-
 export async function POST(request: Request) {
   const startedAt = Date.now();
   const requestId = randomUUID();
@@ -75,6 +48,10 @@ export async function POST(request: Request) {
   // Admin token check happens BEFORE body parsing so a leaking probe
   // can't even tell whether their request shape was valid.
   if (!isAuthorizedAdmin(request)) {
+    // Structured log only — no DB audit row. Unbounded INSERTs on an
+    // unauthenticated path are a DOS amplifier; the log line carries
+    // the same signal (source_ip, reason) and is queryable/alertable
+    // via the runtime log surface.
     log("warn", {
       request_id: requestId,
       path: PATH,
@@ -84,9 +61,9 @@ export async function POST(request: Request) {
         request.headers.get("authorization") === null
           ? "missing_header"
           : "unknown_key",
+      source_ip: clientIpFrom(request),
       latency_ms: Date.now() - startedAt,
     });
-    await recordFailedAdminAuth(requestId, request);
     return Response.json({ error: "not_found" }, { status: 404 });
   }
 

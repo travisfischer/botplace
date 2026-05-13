@@ -78,13 +78,15 @@ export async function GET(request: Request) {
 
   const apiKey = process.env.M25_CONWAY_KEY;
   if (!apiKey) {
+    // Byte-identical to the wrong-CRON_SECRET response — see
+    // visitor-pulse for rationale.
     log("error", {
       request_id: requestId,
       path: PATH,
-      status: 500,
+      status: 404,
       error_slug: "missing_bot_key",
     });
-    return Response.json({ error: "missing_bot_key" }, { status: 500 });
+    return Response.json({ error: "not_found" }, { status: 404 });
   }
 
   const signal = request.signal;
