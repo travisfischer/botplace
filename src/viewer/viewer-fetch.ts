@@ -7,6 +7,7 @@
 // when we have one.
 
 import { ChunkCache, type ManifestEntry } from "./chunk-cache";
+import { decodeSnapshot, type DecodedSnapshot } from "./snapshot";
 
 export type FetchImpl = (
   input: RequestInfo | URL,
@@ -60,6 +61,32 @@ function rateLimitedFromResponse(res: Response, label: string): RateLimitedError
     parseRetryAfter(res),
     `${label} ${res.status}`,
   );
+}
+
+/**
+ * Fetch the full-canvas snapshot in one round trip. Used by the viewer
+ * on initial mount so the canvas paints immediately instead of walking
+ * the manifest + per-chunk fetches. The polling loop takes over for
+ * incremental updates after the snapshot lands.
+ */
+export async function fetchSnapshot(
+  sectorId: string,
+  signal: AbortSignal,
+  opts: FetcherOpts = {},
+): Promise<DecodedSnapshot> {
+  const fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const res = await fetchImpl(
+    urlFor(opts.baseUrl, `/api/v1/public/sectors/${sectorId}/snapshot`),
+    { signal, headers: { Accept: "application/octet-stream" } },
+  );
+  if (res.status === 429 || res.status === 503) {
+    throw rateLimitedFromResponse(res, "snapshot");
+  }
+  if (!res.ok) {
+    throw new Error(`snapshot ${res.status}`);
+  }
+  const buf = new Uint8Array(await res.arrayBuffer());
+  return decodeSnapshot(buf);
 }
 
 export async function fetchManifest(

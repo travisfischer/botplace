@@ -15,7 +15,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SectorCanvas, type CanvasHandle } from "./canvas";
-import { ChunkCache } from "./chunk-cache";
+import { ChunkCache, compareVersion } from "./chunk-cache";
 import {
   MAX_SCALE,
   MIN_SCALE,
@@ -26,7 +26,7 @@ import {
   type Transform,
 } from "./pan-zoom";
 import { PollLoop, type PollLoopStatus } from "./poll-loop";
-import { fetchChunkIfChanged, fetchManifest } from "./viewer-fetch";
+import { fetchChunkIfChanged, fetchManifest, fetchSnapshot } from "./viewer-fetch";
 
 export interface SectorMeta {
   id: string;
@@ -86,9 +86,11 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     return () => ro.disconnect();
   }, [meta]);
 
-  // ---- Poll loop ----
+  // ---- Snapshot preload + poll loop ----
   useEffect(() => {
     const cache = cacheRef.current;
+    const preloadAborter = new AbortController();
+    let cancelled = false;
 
     // On (re)mount, repaint any chunks already in the cache. The cache is
     // held in a useRef and survives StrictMode's mount→cleanup→remount
@@ -133,13 +135,47 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    if (!document.hidden) loop.start();
+    // Snapshot preload: one fetch paints the whole canvas before the
+    // per-chunk polling loop takes over. On failure (network, format
+    // mismatch, abort) we fall through silently — the poll loop will
+    // hydrate the cache the old way (manifest + per-chunk fetches), so
+    // a broken snapshot only costs us the speedup, not correctness.
+    const preload = async () => {
+      try {
+        const snap = await fetchSnapshot(meta.id, preloadAborter.signal);
+        if (cancelled) return;
+        if (snap.chunk_size !== meta.chunk_size) {
+          console.warn(
+            `snapshot chunk_size ${snap.chunk_size} != meta.chunk_size ${meta.chunk_size}; skipping preload`,
+          );
+          return;
+        }
+        for (const c of snap.chunks) {
+          // Only seed if the cache doesn't already have a newer version
+          // — a long-lived tab may have polled past this snapshot.
+          const have = cache.version(c.chunk_x, c.chunk_y);
+          if (have !== undefined && compareVersion(have, c.version) >= 0) continue;
+          cache.set(c.chunk_x, c.chunk_y, c.version, c.bytes);
+          canvasHandleRef.current?.repaintChunk(c.chunk_x, c.chunk_y, c.bytes);
+        }
+      } catch (err) {
+        if (preloadAborter.signal.aborted) return;
+        console.warn("snapshot preload failed", err);
+      }
+    };
+
+    void preload().then(() => {
+      if (cancelled) return;
+      if (!document.hidden) loop.start();
+    });
 
     return () => {
+      cancelled = true;
+      preloadAborter.abort();
       document.removeEventListener("visibilitychange", onVisibility);
       loop.stop();
     };
-  }, [meta.id]);
+  }, [meta.id, meta.chunk_size]);
 
   // ---- Pan / zoom ----
   // Pointer state: id → screen coords. Multi-touch is two entries.

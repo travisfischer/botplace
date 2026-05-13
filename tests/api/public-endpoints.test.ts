@@ -16,9 +16,11 @@ import { describe, expect, it } from "vitest";
 import { GET as getSector } from "@/app/api/v1/public/sectors/[id]/route";
 import { GET as getManifest } from "@/app/api/v1/public/sectors/[id]/manifest/route";
 import { GET as getChunk } from "@/app/api/v1/public/sectors/[id]/chunks/[chunk_x]/[chunk_y]/route";
+import { GET as getSnapshot } from "@/app/api/v1/public/sectors/[id]/snapshot/route";
 import { prisma } from "@/lib/prisma";
 import { mintKey } from "@/src/auth/api-keys";
 import { CHUNK_BYTES, CHUNK_SIZE, writePixel } from "@/src/pixels";
+import { decodeSnapshot } from "@/src/viewer/snapshot";
 
 const HAS_DB = Boolean(process.env.DATABASE_URL);
 const describeIfDb = HAS_DB ? describe : describe.skip;
@@ -380,5 +382,158 @@ describeIfDb("GET /api/v1/public/sectors/:id/chunks/:cx/:cy", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBe("sector_not_found");
+  });
+});
+
+describeIfDb("GET /api/v1/public/sectors/:id/snapshot", () => {
+  it(
+    "returns an empty snapshot (header only) for a freshly seeded sector",
+    { timeout: 30_000 },
+    async () => {
+      const seed = await seedSector(200, 100);
+      try {
+        const res = await getSnapshot(new Request("http://test/"), {
+          params: Promise.resolve({ id: seed.sectorId }),
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Content-Type")).toBe("application/octet-stream");
+        expect(res.headers.get("Cache-Control")).toBe(
+          "public, s-maxage=1, stale-while-revalidate=5",
+        );
+        expect(res.headers.get("ETag")).toBe('"snap-0"');
+        expect(res.headers.get("X-Snapshot-Chunk-Count")).toBe("0");
+        expect(res.headers.get("X-Snapshot-Max-Version")).toBe("0");
+        const body = new Uint8Array(await res.arrayBuffer());
+        expect(body.byteLength).toBe(16);
+        const decoded = decodeSnapshot(body);
+        expect(decoded.chunk_size).toBe(CHUNK_SIZE);
+        expect(decoded.chunks).toEqual([]);
+      } finally {
+        await cleanup(seed);
+      }
+    },
+  );
+
+  it(
+    "encodes every written chunk and bumps max-version with each write",
+    { timeout: 30_000 },
+    async () => {
+      const seed = await seedSector(200, 100);
+      try {
+        await writePixel({
+          requestId: randomUUID(),
+          sectorId: seed.sectorId,
+          x: 5,
+          y: 5,
+          color: 1,
+          paletteVersion: 1,
+          botId: seed.botId,
+          apiKeyId: seed.apiKeyId,
+        });
+        await writePixel({
+          requestId: randomUUID(),
+          sectorId: seed.sectorId,
+          x: 105,
+          y: 5,
+          color: 2,
+          paletteVersion: 1,
+          botId: seed.botId,
+          apiKeyId: seed.apiKeyId,
+        });
+        // Bump (0,0) again so its version (2) differs from (1,0)'s (1)
+        // and we can verify max-version is the larger of the two.
+        await writePixel({
+          requestId: randomUUID(),
+          sectorId: seed.sectorId,
+          x: 6,
+          y: 5,
+          color: 3,
+          paletteVersion: 1,
+          botId: seed.botId,
+          apiKeyId: seed.apiKeyId,
+        });
+
+        const res = await getSnapshot(new Request("http://test/"), {
+          params: Promise.resolve({ id: seed.sectorId }),
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get("X-Snapshot-Chunk-Count")).toBe("2");
+        expect(res.headers.get("X-Snapshot-Max-Version")).toBe("2");
+        expect(res.headers.get("ETag")).toBe('"snap-2"');
+
+        const body = new Uint8Array(await res.arrayBuffer());
+        const decoded = decodeSnapshot(body);
+        expect(decoded.chunk_size).toBe(CHUNK_SIZE);
+        expect(decoded.chunks.length).toBe(2);
+        // (chunkY asc, chunkX asc) → (0,0) before (1,0).
+        const c00 = decoded.chunks[0];
+        const c10 = decoded.chunks[1];
+        expect(c00.chunk_x).toBe(0);
+        expect(c00.chunk_y).toBe(0);
+        expect(c00.version).toBe("2");
+        expect(c00.bytes.length).toBe(CHUNK_BYTES);
+        // (5,5) within chunk (0,0) → byteOffset = 5*100 + 5 = 505.
+        expect(c00.bytes[505]).toBe(1);
+        // (6,5) → byteOffset = 5*100 + 6 = 506.
+        expect(c00.bytes[506]).toBe(3);
+
+        expect(c10.chunk_x).toBe(1);
+        expect(c10.chunk_y).toBe(0);
+        expect(c10.version).toBe("1");
+        // (105,5) → local (5,5) within chunk (1,0) → byteOffset 505.
+        expect(c10.bytes[505]).toBe(2);
+      } finally {
+        await cleanup(seed);
+      }
+    },
+  );
+
+  it(
+    "returns 304 when If-None-Match matches the current ETag",
+    { timeout: 30_000 },
+    async () => {
+      const seed = await seedSector(200, 100);
+      try {
+        await writePixel({
+          requestId: randomUUID(),
+          sectorId: seed.sectorId,
+          x: 0,
+          y: 0,
+          color: 1,
+          paletteVersion: 1,
+          botId: seed.botId,
+          apiKeyId: seed.apiKeyId,
+        });
+
+        const first = await getSnapshot(new Request("http://test/"), {
+          params: Promise.resolve({ id: seed.sectorId }),
+        });
+        const etag = first.headers.get("ETag");
+        expect(etag).toBe('"snap-1"');
+
+        const second = await getSnapshot(
+          new Request("http://test/", {
+            headers: { "If-None-Match": etag! },
+          }),
+          { params: Promise.resolve({ id: seed.sectorId }) },
+        );
+        expect(second.status).toBe(304);
+        expect(second.headers.get("ETag")).toBe('"snap-1"');
+        const body = await second.arrayBuffer();
+        expect(body.byteLength).toBe(0);
+      } finally {
+        await cleanup(seed);
+      }
+    },
+  );
+
+  it("returns 404 for unknown sector", { timeout: 10_000 }, async () => {
+    const res = await getSnapshot(new Request("http://test/"), {
+      params: Promise.resolve({ id: "no-such-sector-xyz" }),
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("sector_not_found");
+    expect(typeof body.request_id).toBe("string");
   });
 });
