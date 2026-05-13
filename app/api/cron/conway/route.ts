@@ -26,7 +26,7 @@ import { randomUUID } from "node:crypto";
 
 import { log } from "@/lib/log";
 import {
-  chunkForMinute,
+  chunkForTick,
   conwayStep,
   countAlive,
   maybeSeed,
@@ -93,8 +93,8 @@ export async function GET(request: Request) {
 
   try {
     const meta = await fetchSectorMeta(SECTOR_ID, signal);
-    const { cx, cy } = chunkForMinute(
-      new Date().getUTCMinutes(),
+    const { cx, cy } = chunkForTick(
+      Date.now(),
       meta.chunks_x,
       meta.chunks_y,
     );
@@ -102,18 +102,17 @@ export async function GET(request: Request) {
     const baseAlive = countAlive(bytes);
 
     // Conway step (operates on a copy so we still have the original
-    // bytes available for `maybeSeed`).
-    const { changes: stepChanges } = conwayStep(bytes.slice(), meta.chunk_size);
+    // bytes available for `maybeSeed`). `cy` lets the step skip the
+    // reserved top-rows zone owned by visitor-pulse.
+    const { changes: stepChanges } = conwayStep(
+      bytes.slice(),
+      meta.chunk_size,
+      cy,
+    );
 
     // Auto-seed when the chunk has too few alive cells. Operates on the
     // ORIGINAL state.
-    const seedChanges = maybeSeed(
-      bytes,
-      meta.chunk_size,
-      cx,
-      cy,
-      meta.palette.length,
-    );
+    const seedChanges = maybeSeed(bytes, meta.chunk_size, cx, cy);
 
     // Combine. Step changes win when both target the same in-chunk cell
     // (seed runs first, but step is the canonical evolution).

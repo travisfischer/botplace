@@ -6,10 +6,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   BLOCK_PX,
+  METER_DARK_COLOR,
+  METER_LIT_COLOR,
   PIXELS_PER_BLOCK,
   blockDiff,
   computeNewLastBlocks,
   pixelsForBlock,
+  planRepaint,
   viewersToBlocks,
 } from "@/src/launch-bots/visitor-pulse-logic";
 
@@ -133,6 +136,72 @@ describe("visitor-pulse-logic", () => {
         [10, 1],
         [11, 1],
       ]);
+    });
+  });
+
+  describe("planRepaint (full repaint each tick)", () => {
+    it("lights every block 0..target-1 (4 pixels per block)", () => {
+      const plan = planRepaint({
+        previousBlocks: 0,
+        targetBlocks: 3,
+        maxBlocks: 500,
+        maxWrites: 100,
+      });
+      expect(plan.every((w) => w.phase === "light")).toBe(true);
+      expect(plan).toHaveLength(12);
+      for (const w of plan) expect(w.color).toBe(METER_LIT_COLOR);
+      // Block 0 pixels appear; block 3 pixels do not.
+      expect(plan.filter((w) => w.block === 0)).toHaveLength(4);
+      expect(plan.filter((w) => w.block === 3)).toHaveLength(0);
+    });
+    it("emits dark writes for blocks past the target when meter shrinks", () => {
+      const plan = planRepaint({
+        previousBlocks: 5,
+        targetBlocks: 2,
+        maxBlocks: 500,
+        maxWrites: 100,
+      });
+      const lights = plan.filter((w) => w.phase === "light");
+      const darks = plan.filter((w) => w.phase === "dark");
+      // 2 lit blocks × 4 pixels = 8 light writes.
+      expect(lights).toHaveLength(8);
+      // Blocks 2, 3, 4 darkening = 3 blocks × 4 pixels = 12 dark.
+      expect(darks).toHaveLength(12);
+      for (const w of darks) expect(w.color).toBe(METER_DARK_COLOR);
+    });
+    it("steady-state (previous === target): pure full repaint, no darks", () => {
+      const plan = planRepaint({
+        previousBlocks: 8,
+        targetBlocks: 8,
+        maxBlocks: 500,
+        maxWrites: 100,
+      });
+      // 8 blocks × 4 pixels = 32 light writes; no darks.
+      expect(plan).toHaveLength(32);
+      expect(plan.every((w) => w.phase === "light")).toBe(true);
+    });
+    it("respects maxWrites: lights prioritized first", () => {
+      const plan = planRepaint({
+        previousBlocks: 0,
+        targetBlocks: 20,
+        maxBlocks: 500,
+        maxWrites: 12,
+      });
+      expect(plan).toHaveLength(12);
+      // 12 writes = first 3 blocks fully lit.
+      const blocks = new Set(plan.map((w) => w.block));
+      expect([...blocks].sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    });
+    it("caps targetBlocks at maxBlocks (defensive)", () => {
+      const plan = planRepaint({
+        previousBlocks: 0,
+        targetBlocks: 999,
+        maxBlocks: 4,
+        maxWrites: 100,
+      });
+      // Capped to 4 blocks × 4 pixels = 16 lit.
+      const lights = plan.filter((w) => w.phase === "light");
+      expect(lights).toHaveLength(16);
     });
   });
 });

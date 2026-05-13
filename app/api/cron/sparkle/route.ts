@@ -1,21 +1,24 @@
 // GET /api/cron/sparkle — M2.5 launch bot.
 //
-// Adds a glowing halo to the most recent non-self pixel write. Each tick:
+// Sparkle paints a "slow-mo explosion" radiating outward from the last
+// few non-self pixel writes. Each tick:
 //   1. Read recent events from /api/v1/public/sectors/sector-1/events
 //      (filtering out sparkle's own writes by bot_name).
-//   2. If a non-self event exists, paint 8 sparkle pixels at cardinal +
-//      diagonal offsets from that anchor (skipping out-of-bounds).
-//   3. Each sparkle pixel is palette index 7 (off-white #dcf5ff), spaced
-//      ≥1.1s apart to honor the POWER tier rate limit.
+//   2. Pick up to SPARKLE_ANCHOR_COUNT distinct non-self anchors.
+//   3. For each anchor, pick SPARKLE_DIRS_PER_ANCHOR deterministic
+//      directions and shoot SPARKLE_RING_COUNT rings outward.
+//   4. For each ring: light the ring's pixels with SPARKLE_COLOR (7),
+//      then revert each to its previous color. The explosion is purely
+//      transient — the canvas state after the tick equals the state
+//      before, minus any rate-limit-induced partial revert.
 //
-// Visual: a soft halo follows whichever bot wrote most recently.
-//
-// If no non-self events in the last ~60s, sparkle sleeps this tick.
+// Writes are spaced ≥1.1s to honor the POWER tier's 1/sec/bot bucket.
 
 import { randomUUID } from "node:crypto";
 
 import { log } from "@/lib/log";
 import {
+  fetchChunkBytes,
   fetchEvents,
   fetchSectorMeta,
   isAuthorizedCron,
@@ -24,10 +27,15 @@ import {
   writePixel,
 } from "@/src/launch-bots/runner";
 import {
+  SPARKLE_ANCHOR_COUNT,
   SPARKLE_COLOR,
-  pickNonSelfAnchor,
-  sparkleTargets,
+  SPARKLE_DIRS_PER_ANCHOR,
+  SPARKLE_RING_COUNT,
+  chunksForAnchors,
+  pickRecentNonSelfAnchors,
+  planExplosion,
 } from "@/src/launch-bots/sparkle-logic";
+import { RESERVED_TOP_ROWS } from "@/src/launch-bots/conway-logic";
 
 const PATH = "/api/cron/sparkle";
 const SECTOR_ID = "sector-1";
@@ -82,14 +90,16 @@ export async function GET(request: Request) {
   try {
     // Pull recent events + sector dimensions in parallel.
     const [events, meta] = await Promise.all([
-      fetchEvents(SECTOR_ID, 20, signal),
+      fetchEvents(SECTOR_ID, 30, signal),
       fetchSectorMeta(SECTOR_ID, signal),
     ]);
 
-    // Most recent non-self event. /events returns descending by id, so
-    // the first non-self entry is the freshest.
-    const anchor = pickNonSelfAnchor(events, SELF_BOT_NAME);
-    if (!anchor) {
+    const anchors = pickRecentNonSelfAnchors(
+      events,
+      SELF_BOT_NAME,
+      SPARKLE_ANCHOR_COUNT,
+    );
+    if (anchors.length === 0) {
       log("info", {
         request_id: requestId,
         path: PATH,
@@ -106,40 +116,78 @@ export async function GET(request: Request) {
       });
     }
 
+    // Fetch every chunk an explosion ring could touch (cheap — usually
+    // 1–4 chunks). Cached in a Map keyed by `cx,cy` so the ColorAt
+    // closure can resolve any (x, y) without a network call.
+    const chunkCoords = chunksForAnchors(
+      anchors,
+      meta.chunk_size,
+      meta.chunks_x,
+      meta.chunks_y,
+      SPARKLE_RING_COUNT,
+    );
+    const chunkBytes = new Map<string, Uint8Array>();
+    await Promise.all(
+      chunkCoords.map(async ({ cx, cy }) => {
+        const bytes = await fetchChunkBytes(SECTOR_ID, cx, cy, signal);
+        chunkBytes.set(`${cx},${cy}`, bytes);
+      }),
+    );
+
+    const colorAt = (x: number, y: number): number => {
+      const cx = Math.floor(x / meta.chunk_size);
+      const cy = Math.floor(y / meta.chunk_size);
+      const bytes = chunkBytes.get(`${cx},${cy}`);
+      if (!bytes) return 0;
+      const inX = x - cx * meta.chunk_size;
+      const inY = y - cy * meta.chunk_size;
+      return bytes[inY * meta.chunk_size + inX];
+    };
+
+    const plan = planExplosion({
+      anchors,
+      canvasWidth: meta.width,
+      canvasHeight: meta.height,
+      reservedTopRows: RESERVED_TOP_ROWS,
+      colorAt,
+      rings: SPARKLE_RING_COUNT,
+      dirsPerAnchor: SPARKLE_DIRS_PER_ANCHOR,
+    });
+
     log("info", {
       request_id: requestId,
       path: PATH,
       status: 200,
       bot_name: SELF_BOT_NAME,
-      anchor: { x: anchor.x, y: anchor.y, author: anchor.bot_name },
+      anchors: anchors.map((a) => ({ x: a.x, y: a.y, author: a.bot_name })),
+      planned_writes: plan.length,
+      rings: SPARKLE_RING_COUNT,
     });
-
-    // Paint up to 8 sparkle pixels around the anchor, clipped to the
-    // canvas bounds.
-    const targets = sparkleTargets(anchor.x, anchor.y, meta.width, meta.height);
 
     let written = 0;
     let firstError: string | undefined;
     let firstErrorServerRequestId: string | undefined;
-    for (const [x, y] of targets) {
+    for (const w of plan) {
       const result = await writePixel(
         {
           apiKey,
           sectorId: SECTOR_ID,
-          x,
-          y,
-          color: SPARKLE_COLOR,
+          x: w.x,
+          y: w.y,
+          color: w.color,
           parentRequestId: requestId,
         },
         signal,
       );
       if (!result.ok) {
         firstError = firstError ?? result.error;
-        firstErrorServerRequestId = firstErrorServerRequestId ?? result.serverRequestId;
+        firstErrorServerRequestId =
+          firstErrorServerRequestId ?? result.serverRequestId;
         break;
       }
       written++;
-      await sleep(1100, signal);
+      // Last write doesn't need a trailing sleep.
+      if (written < plan.length) await sleep(1100, signal);
     }
 
     log("info", {
@@ -148,6 +196,7 @@ export async function GET(request: Request) {
       status: 200,
       bot_name: SELF_BOT_NAME,
       pixels_written: written,
+      planned_writes: plan.length,
       latency_ms: Date.now() - startedAt,
       ...(firstError ? { error_slug: firstError } : {}),
       ...(firstErrorServerRequestId
@@ -157,8 +206,10 @@ export async function GET(request: Request) {
 
     return Response.json({
       bot: SELF_BOT_NAME,
-      anchor: { x: anchor.x, y: anchor.y },
+      anchors: anchors.map((a) => ({ x: a.x, y: a.y })),
       pixels_written: written,
+      planned_writes: plan.length,
+      sparkle_color: SPARKLE_COLOR,
       ...(firstError ? { first_error: firstError } : {}),
     });
   } catch (err) {
