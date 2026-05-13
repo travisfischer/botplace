@@ -19,14 +19,17 @@ import {
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
 
-// Browser cache hint (Vercel may downgrade this for dynamic routes —
-// that's fine, the edge cache is the one that matters for our scaling
-// story).
-const CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=5";
+// Browser: always revalidate. Sharing s-maxage + swr with the CDN value
+// below caused the browser to do a background SWR revalidation on every
+// poll (1Hz JS poll → 2 origin-bound HTTP requests/sec), doubling load
+// on the per-IP rate-limit bucket. `no-cache` forces revalidation each
+// poll; the request itself still costs nothing extra because the JS
+// poll already issues it once per second.
+const CACHE_CONTROL = "private, no-cache";
 // Vercel's CDN respects CDN-Cache-Control on dynamic route handlers
 // without downgrading. Without this, plain Cache-Control is stripped
 // of s-maxage/swr and the edge never caches — every viewer poll would
-// hit origin. Same TTLs as CACHE_CONTROL.
+// hit origin.
 const CDN_CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=5";
 
 export async function GET(

@@ -77,7 +77,15 @@ export async function fetchSnapshot(
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const res = await fetchImpl(
     urlFor(opts.baseUrl, `/api/v1/public/sectors/${sectorId}/snapshot`),
-    { signal, headers: { Accept: "application/octet-stream" } },
+    {
+      signal,
+      // Omit cookies: the public read endpoints don't use auth, and
+      // sending the Auth.js session cookie causes Vercel's CDN to skip
+      // cache for personalized responses — every viewer poll hits origin
+      // and burns the per-IP rate-limit bucket.
+      credentials: "omit",
+      headers: { Accept: "application/octet-stream" },
+    },
   );
   if (res.status === 429 || res.status === 503) {
     throw rateLimitedFromResponse(res, "snapshot");
@@ -97,7 +105,11 @@ export async function fetchManifest(
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const res = await fetchImpl(
     urlFor(opts.baseUrl, `/api/v1/public/sectors/${sectorId}/manifest`),
-    { signal, headers: { Accept: "application/json" } },
+    {
+      signal,
+      credentials: "omit",
+      headers: { Accept: "application/json" },
+    },
   );
   if (res.status === 429 || res.status === 503) {
     throw rateLimitedFromResponse(res, "manifest");
@@ -140,7 +152,7 @@ export async function fetchChunkIfChanged(
       opts.baseUrl,
       `/api/v1/public/sectors/${sectorId}/chunks/${entry.chunk_x}/${entry.chunk_y}`,
     ),
-    { signal, headers },
+    { signal, credentials: "omit", headers },
   );
   if (res.status === 304) {
     return {

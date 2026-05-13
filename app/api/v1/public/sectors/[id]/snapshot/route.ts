@@ -32,7 +32,9 @@ import {
 import { CHUNK_SIZE } from "@/src/pixels";
 import { encodeSnapshot, type SnapshotChunk } from "@/src/viewer/snapshot";
 
-const CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=5";
+// Browser: always revalidate. See manifest route for the SWR-doubling
+// rationale — same fix here.
+const CACHE_CONTROL = "private, no-cache";
 // Vercel strips s-maxage/swr from plain Cache-Control on dynamic route
 // handlers; the CDN directive is what actually enables edge caching.
 const CDN_CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=5";
