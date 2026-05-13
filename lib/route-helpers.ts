@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { ownerAuthFromRequest } from "@/src/auth/authenticate";
 import { clientIpFrom as httpClientIpFrom } from "./http";
+import { MAX_NAME_LENGTH } from "./limits";
 import { log, type LogFields, type LogLevel } from "./log";
 import {
   checkOwnerWriteRateLimit,
@@ -18,6 +19,7 @@ import {
 
 // Re-export for callers that already imported it from here.
 export const clientIpFrom = httpClientIpFrom;
+export { MAX_NAME_LENGTH };
 
 export interface RouteContext {
   requestId: string;
@@ -190,7 +192,12 @@ export async function applyOwnerWriteRateLimit(
   return { headers: ownerWriteRateLimitHeaders(rl.ownerWrite) };
 }
 
-/** Shape `{ name: string }` body, returning trimmed name or null. */
+/**
+ * Shape `{ name: string }` body, returning trimmed name or null. Null
+ * covers: missing body, non-object body, non-string `name`, empty after
+ * trim, or length > MAX_NAME_LENGTH. Callers report a single
+ * invalid_input error covering all those cases.
+ */
 export async function readNameBody(request: Request): Promise<string | null> {
   const body = (await request.json().catch(() => null)) as
     | { name?: unknown }
@@ -198,5 +205,6 @@ export async function readNameBody(request: Request): Promise<string | null> {
   if (!body || typeof body !== "object") return null;
   if (typeof body.name !== "string") return null;
   const trimmed = body.name.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (trimmed.length === 0 || trimmed.length > MAX_NAME_LENGTH) return null;
+  return trimmed;
 }

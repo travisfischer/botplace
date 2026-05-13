@@ -2,6 +2,7 @@ import {
   applyOwnerWriteRateLimit,
   jsonError,
   jsonOk,
+  MAX_NAME_LENGTH,
   newRouteContext,
   readNameBody,
   requirePepper,
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
   const name = await readNameBody(request);
   if (!name) {
     return jsonError(ctx, 400, "invalid_input", {
-      message: "`name` is required and must be a non-empty string",
+      message: `\`name\` is required and must be a non-empty string up to ${MAX_NAME_LENGTH} characters`,
       extra: owner.logFields,
     });
   }

@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 
+import { MAX_NAME_LENGTH } from "@/lib/limits";
 import { createBotAction, type CreateBotState } from "./_actions";
 
 const INITIAL: CreateBotState | null = null;
@@ -20,7 +21,7 @@ export function CreateBotForm() {
           name="name"
           required
           minLength={1}
-          maxLength={64}
+          maxLength={MAX_NAME_LENGTH}
           placeholder="bot name"
           disabled={pending}
         />

@@ -37,6 +37,7 @@
 import "dotenv/config";
 import { createHmac, randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
+import cuid from "cuid";
 import pg from "pg";
 const { Client } = pg;
 
@@ -105,14 +106,6 @@ function generateApiKey() {
   const hash = createHmac("sha256", PEPPER).update(plaintext).digest("hex");
   const prefix = `bp_live_${random.slice(0, 8)}`;
   return { plaintext, hash, prefix };
-}
-
-function cuid() {
-  // Match the shape Prisma's @default(cuid()) emits well enough for
-  // hand-inserted rows. Real CUIDs are time-sortable but the format
-  // doesn't matter to anything we care about here — uniqueness is the
-  // only invariant, and randomBytes(12) gives us plenty.
-  return "c" + randomBytes(12).toString("base64url").slice(0, 24);
 }
 
 const client = new Client({ connectionString: url });

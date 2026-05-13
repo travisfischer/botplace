@@ -8,6 +8,7 @@
 import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
+import { MAX_NAME_LENGTH } from "@/lib/route-helpers";
 import {
   listPersonalAccessTokensForOwner,
   mintPersonalAccessToken,
@@ -54,6 +55,12 @@ export async function createBotAction(
 ): Promise<CreateBotState> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, message: "Name is required" };
+  if (name.length > MAX_NAME_LENGTH) {
+    return {
+      ok: false,
+      message: `Name must be ${MAX_NAME_LENGTH} characters or fewer`,
+    };
+  }
   try {
     const ownerId = await requireOwnerId();
     const result = await createBotForOwner({
@@ -107,6 +114,12 @@ export async function createPatAction(
 ): Promise<CreatePatState> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, message: "Name is required" };
+  if (name.length > MAX_NAME_LENGTH) {
+    return {
+      ok: false,
+      message: `Name must be ${MAX_NAME_LENGTH} characters or fewer`,
+    };
+  }
   const ownerId = await requireOwnerId();
   const result = await mintPersonalAccessToken({
     ownerId,
