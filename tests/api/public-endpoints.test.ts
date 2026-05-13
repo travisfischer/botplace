@@ -92,7 +92,8 @@ describeIfDb("GET /api/v1/public/sectors/:id", () => {
           params: Promise.resolve({ id: seed.sectorId }),
         });
         expect(res.status).toBe(200);
-        expect(res.headers.get("Cache-Control")).toBe(
+        expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
+        expect(res.headers.get("CDN-Cache-Control")).toBe(
           "public, s-maxage=60, stale-while-revalidate=300",
         );
         const body = await res.json();
@@ -137,7 +138,8 @@ describeIfDb("GET /api/v1/public/sectors/:id/manifest", () => {
           params: Promise.resolve({ id: seed.sectorId }),
         });
         expect(res.status).toBe(200);
-        expect(res.headers.get("Cache-Control")).toBe(
+        expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
+        expect(res.headers.get("CDN-Cache-Control")).toBe(
           "public, s-maxage=1, stale-while-revalidate=5",
         );
         let body = await res.json();
@@ -227,7 +229,8 @@ describeIfDb("GET /api/v1/public/sectors/:id/chunks/:cx/:cy", () => {
         expect(res.headers.get("ETag")).toBe('"0"');
         expect(res.headers.get("X-Chunk-Version")).toBe("0");
         expect(res.headers.get("X-Chunk-Updated-At")).toBeNull();
-        expect(res.headers.get("Cache-Control")).toBe(
+        expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
+        expect(res.headers.get("CDN-Cache-Control")).toBe(
           "public, s-maxage=1, stale-while-revalidate=30",
         );
         const buf = Buffer.from(await res.arrayBuffer());
@@ -397,7 +400,8 @@ describeIfDb("GET /api/v1/public/sectors/:id/snapshot", () => {
         });
         expect(res.status).toBe(200);
         expect(res.headers.get("Content-Type")).toBe("application/octet-stream");
-        expect(res.headers.get("Cache-Control")).toBe(
+        expect(res.headers.get("Cache-Control")).toBe("private, no-cache");
+        expect(res.headers.get("CDN-Cache-Control")).toBe(
           "public, s-maxage=1, stale-while-revalidate=5",
         );
         expect(res.headers.get("ETag")).toBe('"snap-0"');

@@ -27,7 +27,10 @@ import {
 } from "@/lib/rate-limit";
 import { CHUNK_BYTES, CHUNK_SIZE } from "@/src/pixels";
 
-const CACHE_CONTROL = "public, s-maxage=1, stale-while-revalidate=30";
+// Browser: always revalidate. See manifest route for the SWR-doubling
+// rationale. The viewer's chunk fetch sends If-None-Match, so the
+// "always revalidate" cost is a cheap 304 when nothing changed.
+const CACHE_CONTROL = "private, no-cache";
 // See lib comment in manifest/route.ts — Vercel strips s-maxage from
 // plain Cache-Control on dynamic route handlers, so explicit CDN
 // directive is required for edge caching to kick in.

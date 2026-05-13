@@ -18,7 +18,10 @@ import {
 } from "@/lib/rate-limit";
 import { loadSectorMeta } from "@/src/sectors";
 
-const CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
+// Browser: always revalidate. See manifest route for the SWR-doubling
+// rationale — same fix here, even though this route is hit once per
+// page load rather than polled, for consistency.
+const CACHE_CONTROL = "private, no-cache";
 // See lib comment in manifest/route.ts — Vercel strips s-maxage from
 // plain Cache-Control on dynamic route handlers, so explicit CDN
 // directive is required for edge caching to kick in.

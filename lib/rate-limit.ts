@@ -523,7 +523,14 @@ export function publicReadRateLimitResponse(
     });
     return Response.json(
       { error: "rate_limit_unavailable", request_id: context.requestId },
-      { status: 503 },
+      {
+        status: 503,
+        // Tell well-behaved clients (incl. the viewer's PollLoop) to
+        // back off when the limiter dependency is degraded. Without
+        // this the viewer falls back to its 1s base backoff and can
+        // hammer origin during an Upstash incident.
+        headers: { "Retry-After": "5" },
+      },
     );
   }
   log("warn", {
