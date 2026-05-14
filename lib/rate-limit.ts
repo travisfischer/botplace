@@ -20,6 +20,19 @@
 // check: bot first, then IP. Asymmetric token consumption on partial
 // failure is the documented gap (M1 review T4) — generous refill makes
 // it harmless in practice.
+//
+// Fail policy by scope (per-scope graceful degradation; M2.5 follow-up):
+//   - Reads (`read`, `publicRead`): fail OPEN to a per-isolate memory
+//     bucket when Upstash is unreachable. A circuit breaker skips Upstash
+//     entirely for `CIRCUIT_OPEN_MS` after a failure so we don't pay the
+//     2s timeout on every request during a sustained outage. Rationale:
+//     the Vercel Firewall edge rule (`docs/admin/v1.md`, 600/min/IP) is
+//     the real public-read ceiling — the in-app bucket is the floor for
+//     edge-bypass traffic. Per-isolate enforcement is weaker than global,
+//     but the firewall covers the worst case.
+//   - Writes (`bot`/`botPower`/`ip`, `ownerWrite`): fail CLOSED — the
+//     Upstash bucket *is* the abuse defense for these paths. An outage
+//     returning 503 is preferable to opening a flood gate.
 
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
@@ -110,6 +123,90 @@ interface LimiterCache {
 let cached: LimiterCache | null = null;
 let warnedMemoryFallback = false;
 
+// Circuit breaker shared by the FailOpenLimiter wrappers. When Upstash
+// throws (timeout, network, malformed response), the breaker opens for
+// `CIRCUIT_OPEN_MS`; subsequent calls skip Upstash and go straight to
+// the in-isolate memory bucket. After the window expires we try Upstash
+// again — on success the circuit closes; on failure it re-opens.
+//
+// 30s strikes a balance: long enough that a sustained outage doesn't
+// burn 2s of timeout per request, short enough that recovery from a
+// brief blip is fast. Per-isolate state; Fluid Compute's instance
+// reuse means the breaker amortizes across many requests.
+const CIRCUIT_OPEN_MS = 30_000;
+let circuitOpenedAt = 0;
+let circuitWasOpen = false;
+
+function circuitOpen(now: number): boolean {
+  return now - circuitOpenedAt < CIRCUIT_OPEN_MS;
+}
+
+type FailOpenScope = "read" | "public_read";
+
+function tripCircuit(scope: FailOpenScope, err: unknown): void {
+  const wasOpen = circuitOpen(Date.now());
+  circuitOpenedAt = Date.now();
+  circuitWasOpen = true;
+  if (!wasOpen) {
+    log("warn", {
+      dependency: "upstash",
+      error_slug: "rate_limit_upstash_failed",
+      rate_limit_scope: scope,
+      error_class: err instanceof Error ? err.constructor.name : "unknown",
+      message:
+        "Upstash rate-limit failed; falling back to in-isolate memory bucket",
+    });
+  }
+}
+
+function noteCircuitRecovered(): void {
+  if (circuitWasOpen) {
+    circuitWasOpen = false;
+    log("info", {
+      dependency: "upstash",
+      message: "Upstash rate-limit recovered; primary bucket back in use",
+    });
+  }
+}
+
+// Reset hook for tests; not exported to consumers.
+export function __resetCircuitBreakerForTests(): void {
+  circuitOpenedAt = 0;
+  circuitWasOpen = false;
+}
+
+/**
+ * Limiter wrapper that fails open to a per-isolate memory bucket when the
+ * primary (Upstash) throws. Combined with the module-level circuit breaker,
+ * a sustained Upstash outage degrades gracefully instead of returning 503
+ * on every read.
+ *
+ * Used for `read` and `publicRead` only. Write scopes intentionally keep
+ * the underlying Upstash adapter so an Upstash outage cannot become an
+ * abuse-defense outage.
+ */
+export class FailOpenLimiter implements Limiter {
+  constructor(
+    private readonly scope: FailOpenScope,
+    private readonly primary: Limiter,
+    private readonly fallback: Limiter,
+  ) {}
+
+  async limit(key: string): Promise<LimiterResult> {
+    if (circuitOpen(Date.now())) {
+      return this.fallback.limit(key);
+    }
+    try {
+      const result = await this.primary.limit(key);
+      noteCircuitRecovered();
+      return result;
+    } catch (err) {
+      tripCircuit(this.scope, err);
+      return this.fallback.limit(key);
+    }
+  }
+}
+
 /**
  * Validate + normalize an Upstash `Ratelimit#limit` result. Exported only
  * for tests — fail-closed against malformed responses. Caller catches the
@@ -180,13 +277,27 @@ function getLimiters(): LimiterCache {
 
   if (url && token) {
     const redis = new Redis({ url, token });
+    // Wrap read limiters in FailOpenLimiter so Upstash outages degrade
+    // to per-isolate memory buckets instead of 503ing every request.
+    // Write limiters stay raw — see file header for the per-scope policy.
     cached = {
       bot: adaptUpstashLimiter(redis, WRITE_BOT),
       botPower: adaptUpstashLimiter(redis, WRITE_BOT_POWER),
       ip: adaptUpstashLimiter(redis, WRITE_IP),
-      read: adaptUpstashLimiter(redis, READ),
       ownerWrite: adaptUpstashLimiter(redis, OWNER_WRITE),
-      publicRead: adaptUpstashLimiter(redis, PUBLIC_READ),
+      read: new FailOpenLimiter(
+        "read",
+        adaptUpstashLimiter(redis, READ),
+        new MemoryTokenBucket(READ.capacity, READ.refillIntervalMs),
+      ),
+      publicRead: new FailOpenLimiter(
+        "public_read",
+        adaptUpstashLimiter(redis, PUBLIC_READ),
+        new MemoryTokenBucket(
+          PUBLIC_READ.capacity,
+          PUBLIC_READ.refillIntervalMs,
+        ),
+      ),
     };
     return cached;
   }
