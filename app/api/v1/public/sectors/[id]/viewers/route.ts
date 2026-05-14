@@ -3,17 +3,23 @@
 // bot and useful for any reactive bot that wants to react to audience
 // size.
 //
-// Implementation: edge middleware (`middleware.ts`) writes each viewer's
-// IP to a per-minute Redis SET on every public read. This endpoint reads
-// the union of the current + previous minute sets.
+// Implementation: the viewer client posts to
+// `/api/v1/public/sectors/:id/heartbeat` once per minute while its tab
+// is visible; that endpoint writes the caller's IP into a per-minute
+// Redis SET. This endpoint reads the union of the current + previous
+// minute sets.
 //
 // The numerator is "approximate" because:
+//   - Only clients that ran the viewer JS are counted (a crawler that
+//     scrapes the public API without executing JS is invisible — a
+//     deliberate change from the M2.5 edge-middleware design to avoid
+//     paying Upstash commands per scraper request).
 //   - Bot egress IPs are NOT excluded (per M2.5 decision #5).
 //   - Multiple users behind a NAT collapse to one IP.
 //   - The window is bucketed by wall-clock minute, so a viewer who
-//     just polled in the previous minute counts even if they've
+//     just heartbeat'd in the previous minute counts even if they've
 //     since closed the tab.
-// All three biases are small at our launch scale; the count is
+// All biases are small at our launch scale; the count is
 // directional, not exact.
 
 import { randomUUID } from "node:crypto";
@@ -66,9 +72,9 @@ export async function GET(
 
   try {
     // M2.5: sector_id is captured for forward compatibility (per-sector
-    // viewer counts) but the current edge middleware tracks one global
-    // bucket per minute. When we add multi-sector support, the middleware
-    // can switch to per-sector keys keyed on path segment.
+    // viewer counts) but the heartbeat endpoint currently writes to one
+    // global bucket per minute. When we add multi-sector support, the
+    // heartbeat can switch to per-sector keys keyed on sectorId.
     const r = getRedis();
     let active = 0;
     if (r) {

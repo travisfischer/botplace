@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SectorCanvas, type CanvasHandle } from "./canvas";
 import { ChunkCache, compareVersion } from "./chunk-cache";
+import { createHeartbeat } from "./heartbeat";
 import {
   MAX_SCALE,
   MIN_SCALE,
@@ -129,9 +130,22 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       onStatusChange: (status: PollLoopStatus) => setHealthy(status.healthy),
     });
 
+    // Periodic "I'm watching" beacon. Replaces the M2.5 edge-middleware
+    // viewer-tracking — the middleware fired 2 Upstash commands on every
+    // public-API request (incl. scrapers/crawlers/uptime pings), which
+    // burned through the Upstash monthly quota in days. The beacon caps
+    // the cost at 2 cmds/min per real viewer.
+    const heartbeat = createHeartbeat(meta.id);
+    if (!document.hidden) heartbeat.start();
+
     const onVisibility = () => {
-      if (document.hidden) loop.pause();
-      else loop.resume();
+      if (document.hidden) {
+        loop.pause();
+        heartbeat.stop();
+      } else {
+        loop.resume();
+        heartbeat.start();
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -174,6 +188,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       preloadAborter.abort();
       document.removeEventListener("visibilitychange", onVisibility);
       loop.stop();
+      heartbeat.stop();
     };
   }, [meta.id, meta.chunk_size]);
 
