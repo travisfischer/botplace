@@ -110,6 +110,8 @@ Botplace uses one canonical local env file: **`.env`** at the repo root. Both `l
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 DATABASE_URL_UNPOOLED="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 NEON_BRANCH_NAME="dev-personal"
+# Optional — only needed for Google sign-in during dev:
+# GOOGLE_CLIENT_ID="<oauth client id>"
 ```
 
 - `DATABASE_URL` — runtime connection used by `lib/prisma.ts` via the `@prisma/adapter-pg` adapter. In production this is Neon's pooled URL (host ends with `-pooler`); for local dev pooled or unpooled both work.
@@ -164,13 +166,32 @@ pnpm op db:bootstrap
 pnpm db:bootstrap
 ```
 
-That creates (or reuses) a `dev-<random>` child branch off `dev-main`, writes `.env` from the allow list, runs `prisma migrate deploy`, and prints DB-OK status. Re-running it is idempotent.
+That creates (or reuses) a `dev-<random>` child branch off `dev-main`, writes `.env` from the allow list (Neon connection URIs, `BOTPLACE_API_KEY_PEPPER`, `AUTH_SECRET`, and — when present in process env — `GOOGLE_CLIENT_ID`), runs `prisma migrate deploy`, and prints DB-OK status. Re-running it is idempotent.
 
 If you'd rather not use Neon — for example, offline work — you can run Postgres locally (`brew install postgresql` or `docker run postgres`) and hand-author `.env`. Migrations and the app work against any Postgres 17+; Neon-specific features (branching, autoscale) are off the table on local Postgres.
 
 ## Rate limiting in dev
 
 Production uses Upstash Redis for rate limiting. Local dev has **no Upstash dependency**: `lib/rate-limit.ts` falls back to an in-process memory bucket when no Upstash env (`UPSTASH_REDIS_REST_URL`/`KV_REST_API_URL` + token) is set and `NODE_ENV !== 'production'`. This is a deliberate dev-experience choice — the disposable per-Neon-branch dev story shouldn't require an extra service to run a local server. The fallback resets on every dev-server restart, so testing rate-limit behavior across processes still requires real Upstash creds in your env.
+
+### Fetching the Upstash creds when you do need them
+
+Upstash is installed via the **Vercel Marketplace integration**, so the credentials are managed by Vercel — not stored in 1Password (see [secrets.md](secrets.md#items)). To exercise real Upstash from a dev session:
+
+1. Open the Vercel dashboard → your project → **Storage** tab → the Redis store.
+2. Find `KV_REST_API_URL` and `KV_REST_API_TOKEN` in the env-vars section; click "Show secret" to reveal the token.
+3. Export them into your current shell for the session:
+
+   ```bash
+   read -p "Paste KV_REST_API_URL: "      KV_REST_API_URL
+   read -s -p "Paste KV_REST_API_TOKEN: " KV_REST_API_TOKEN; echo
+   export KV_REST_API_URL KV_REST_API_TOKEN
+   pnpm dev
+   ```
+
+4. When you're done, `unset KV_REST_API_URL KV_REST_API_TOKEN` (or just close the terminal). Never paste these into `.env` — the integration rotates them and a stale local copy is a worse bug than re-fetching on demand.
+
+Heads up: `vercel env pull --environment=production` is **not** a reliable path for these. Vercel masks any env var marked sensitive (which `KV_REST_API_TOKEN` is by default) with `***`, so the resulting file contains placeholder strings instead of working credentials. Use the Storage UI instead.
 
 ## Useful scripts
 
