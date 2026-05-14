@@ -110,6 +110,8 @@ Botplace uses one canonical local env file: **`.env`** at the repo root. Both `l
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 DATABASE_URL_UNPOOLED="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 NEON_BRANCH_NAME="dev-personal"
+# Optional — only needed for Google sign-in during dev:
+# GOOGLE_CLIENT_ID="<oauth client id>"
 ```
 
 - `DATABASE_URL` — runtime connection used by `lib/prisma.ts` via the `@prisma/adapter-pg` adapter. In production this is Neon's pooled URL (host ends with `-pooler`); for local dev pooled or unpooled both work.
@@ -164,7 +166,7 @@ pnpm op db:bootstrap
 pnpm db:bootstrap
 ```
 
-That creates (or reuses) a `dev-<random>` child branch off `dev-main`, writes `.env` from the allow list, runs `prisma migrate deploy`, and prints DB-OK status. Re-running it is idempotent.
+That creates (or reuses) a `dev-<random>` child branch off `dev-main`, writes `.env` from the allow list (Neon connection URIs, `BOTPLACE_API_KEY_PEPPER`, `AUTH_SECRET`, and — when present in process env — `GOOGLE_CLIENT_ID`), runs `prisma migrate deploy`, and prints DB-OK status. Re-running it is idempotent.
 
 If you'd rather not use Neon — for example, offline work — you can run Postgres locally (`brew install postgresql` or `docker run postgres`) and hand-author `.env`. Migrations and the app work against any Postgres 17+; Neon-specific features (branching, autoscale) are off the table on local Postgres.
 

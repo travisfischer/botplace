@@ -169,6 +169,16 @@ else
   log "preserving existing AUTH_SECRET from $ENV_FILE"
 fi
 
+# Google OAuth client ID (non-secret). Process env wins (op.env injects via
+# `pnpm op db:bootstrap`; cloud-agent platforms inject directly); otherwise
+# preserve the previous .env value. If neither is set, omit — Google sign-in
+# simply won't work until GOOGLE_CLIENT_ID is supplied.
+if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
+  DEV_GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID"
+else
+  DEV_GOOGLE_CLIENT_ID=$(read_env_value GOOGLE_CLIENT_ID)
+fi
+
 # Write .env atomically (allow-list only — no NEON_API_KEY etc.)
 log "writing $ENV_FILE..."
 TMP=$(mktemp)
@@ -183,6 +193,7 @@ NEON_BRANCH_NAME="$TARGET_BRANCH"
 BOTPLACE_API_KEY_PEPPER="$DEV_PEPPER"
 AUTH_SECRET="$DEV_AUTH_SECRET"
 EOF
+[ -n "$DEV_GOOGLE_CLIENT_ID" ] && printf 'GOOGLE_CLIENT_ID="%s"\n' "$DEV_GOOGLE_CLIENT_ID" >> "$TMP"
 mv "$TMP" "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 ok "$ENV_FILE updated (allow-list values only)"
