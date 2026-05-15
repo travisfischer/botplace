@@ -131,3 +131,29 @@ export function normalize(
   );
 }
 
+/**
+ * Translate a screen-space point (CSS pixels relative to the viewport's
+ * origin) into world coordinates. Returns null if the point lies
+ * outside the world bounds at this transform.
+ *
+ * The inverse of `screen = world * scale + translate`:
+ *   world = (screen - translate) / scale
+ *
+ * Used by the M3 click-to-inspect handler in the viewer: pointer up
+ * fires a `pixelclick` callback with the world coordinates if the
+ * pointer didn't drift past the drag-threshold while down.
+ *
+ * Restored from the M2.5 dead-code purge (P2.7) — same math, real
+ * consumer now exists.
+ */
+export function screenToWorld(
+  t: Transform,
+  point: { x: number; y: number },
+  world: World,
+): { x: number; y: number } | null {
+  const wx = Math.floor((point.x - t.tx) / t.scale);
+  const wy = Math.floor((point.y - t.ty) / t.scale);
+  if (wx < 0 || wy < 0 || wx >= world.width || wy >= world.height) return null;
+  return { x: wx, y: wy };
+}
+

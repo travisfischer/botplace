@@ -22,10 +22,16 @@ import {
   MIN_SCALE,
   defaultTransform,
   normalize,
+  screenToWorld,
   translateBy,
   zoomAround,
   type Transform,
 } from "./pan-zoom";
+import {
+  PixelInspectBox,
+  type PixelClickPosition,
+  type PixelInspectFetchOutcome,
+} from "./pixel-inspect";
 import { PollLoop, type PollLoopStatus } from "./poll-loop";
 import { fetchChunkIfChanged, fetchManifest, fetchSnapshot } from "./viewer-fetch";
 
@@ -69,6 +75,27 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     transformRef.current = transform;
   }, [transform]);
   const [healthy, setHealthy] = useState(true);
+
+  // M3 click-to-inspect state. Single info-box at a time; opening
+  // another click replaces the previous one.
+  const [inspect, setInspect] = useState<{
+    position: PixelClickPosition;
+    outcome: PixelInspectFetchOutcome | "loading";
+  } | null>(null);
+  const inspectAbortRef = useRef<AbortController | null>(null);
+  // Track pointer-down position so onPointerUp can decide whether the
+  // gesture was a click vs. a drag.
+  const pointerDownRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    startedAt: number;
+  } | null>(null);
+  // CSS-pixel threshold below which a pointer up counts as a click.
+  // Existing pan code already operates in CSS px; 5px is roughly the
+  // conservative drag threshold the platform's own click event uses.
+  const CLICK_DRAG_THRESHOLD_PX = 5;
+  const CLICK_MAX_DURATION_MS = 500;
 
   // ---- Initial fit + window resize ----
   useEffect(() => {
@@ -237,7 +264,20 @@ export function SectorViewer({ meta }: SectorViewerProps) {
   const onPointerDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     updateRect();
-    pointersRef.current.set(e.pointerId, screenPoint(e));
+    const sp = screenPoint(e);
+    pointersRef.current.set(e.pointerId, sp);
+    // Record the down for the click-vs-drag decision in onPointerUp.
+    // Only the first finger counts — multi-finger gestures are pinch.
+    if (pointersRef.current.size === 1) {
+      pointerDownRef.current = {
+        id: e.pointerId,
+        startX: sp.x,
+        startY: sp.y,
+        startedAt: Date.now(),
+      };
+    } else {
+      pointerDownRef.current = null;
+    }
     if (pointersRef.current.size === 2) {
       const pts = [...pointersRef.current.values()];
       const dx = pts[0].x - pts[1].x;
@@ -278,7 +318,66 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     }
   };
 
+  const inspectPixel = useCallback(
+    async (worldX: number, worldY: number, screenX: number, screenY: number) => {
+      // Cancel any in-flight inspect fetch — only one at a time.
+      inspectAbortRef.current?.abort();
+      const ac = new AbortController();
+      inspectAbortRef.current = ac;
+      const position: PixelClickPosition = {
+        worldX,
+        worldY,
+        screenX,
+        screenY,
+      };
+      setInspect({ position, outcome: "loading" });
+      try {
+        const res = await fetch(
+          `/api/v1/public/sectors/${encodeURIComponent(meta.id)}/pixels/${worldX}/${worldY}`,
+          { signal: ac.signal },
+        );
+        if (ac.signal.aborted) return;
+        if (res.status === 404) {
+          setInspect({ position, outcome: { kind: "not_found" } });
+          return;
+        }
+        if (!res.ok) {
+          setInspect({
+            position,
+            outcome: {
+              kind: "error",
+              message: `Couldn't load pixel info (${res.status}).`,
+            },
+          });
+          return;
+        }
+        const body = (await res.json()) as {
+          x: number;
+          y: number;
+          color: number;
+          palette_version: number;
+          bot_handle: string;
+          bot_display_name: string;
+          written_at: string;
+        };
+        if (ac.signal.aborted) return;
+        setInspect({ position, outcome: { kind: "ok", info: body } });
+      } catch (err) {
+        if (ac.signal.aborted) return;
+        setInspect({
+          position,
+          outcome: {
+            kind: "error",
+            message: err instanceof Error ? err.message : "Network error",
+          },
+        });
+      }
+    },
+    [meta.id],
+  );
+
   const onPointerUp = (e: React.PointerEvent) => {
+    const down = pointerDownRef.current;
     pointersRef.current.delete(e.pointerId);
     if (pointersRef.current.size < 2) pinchRef.current = null;
     if (pointersRef.current.size === 1) {
@@ -286,6 +385,28 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       // it as the new baseline (avoids a jump on finger-up after pinch).
       const remaining = [...pointersRef.current.values()][0];
       pointersRef.current.set([...pointersRef.current.keys()][0], remaining);
+    }
+    // Click-to-inspect: only fire if this was a single-pointer gesture
+    // that didn't drift past the drag threshold and didn't take too long.
+    if (
+      down !== null &&
+      down.id === e.pointerId &&
+      pointersRef.current.size === 0
+    ) {
+      const now = screenPoint(e);
+      const dx = now.x - down.startX;
+      const dy = now.y - down.startY;
+      const distance = Math.hypot(dx, dy);
+      const elapsed = Date.now() - down.startedAt;
+      pointerDownRef.current = null;
+      if (distance <= CLICK_DRAG_THRESHOLD_PX && elapsed <= CLICK_MAX_DURATION_MS) {
+        const world = screenToWorld(transformRef.current, now, meta);
+        if (world) {
+          void inspectPixel(world.x, world.y, now.x, now.y);
+        }
+      }
+    } else {
+      pointerDownRef.current = null;
     }
   };
 
@@ -398,6 +519,24 @@ export function SectorViewer({ meta }: SectorViewerProps) {
         <div role="status" aria-live="polite" style={stalePillStyle}>
           Reconnecting…
         </div>
+      )}
+      {inspect && (
+        <PixelInspectBox
+          position={inspect.position}
+          outcome={inspect.outcome}
+          paletteHex={meta.palette}
+          onClose={() => setInspect(null)}
+          onInspectBot={(handle) => {
+            // Open the bot's recent activity in a new tab so the
+            // canvas keeps streaming. Hub-hopping (in-canvas chained
+            // navigation) is explicitly out of scope for M3.
+            window.open(
+              `/api/v1/public/bots/${encodeURIComponent(handle)}/events`,
+              "_blank",
+              "noopener,noreferrer",
+            );
+          }}
+        />
       )}
     </div>
   );

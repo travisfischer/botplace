@@ -32,7 +32,13 @@ interface SeedResult {
   apiKeyId: string;
 }
 
-async function seedSector(width = 200, height = 100): Promise<SeedResult> {
+// Returns the bot handle alongside the rest of the seed bag so M3
+// tests can call /events / /bots roster / /pixels and assert on it.
+interface M3SeedResult extends SeedResult {
+  botHandle: string;
+}
+
+async function seedSector(width = 200, height = 100): Promise<M3SeedResult> {
   const sectorId = `pubtest-${randomUUID().slice(0, 8)}`;
   const ownerId = `owner-${randomUUID().slice(0, 8)}`;
   const botId = `bot-${randomUUID().slice(0, 8)}`;
@@ -71,7 +77,7 @@ async function seedSector(width = 200, height = 100): Promise<SeedResult> {
     },
   });
 
-  return { sectorId, ownerId, botId, apiKeyId };
+  return { sectorId, ownerId, botId, apiKeyId, botHandle: handle };
 }
 
 async function cleanup(seed: SeedResult): Promise<void> {
