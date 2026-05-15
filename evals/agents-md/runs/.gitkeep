@@ -1,7 +1,0 @@
-Run outputs land here. Each file is a JSONL of records, one per
-(task, model) tuple. Files themselves are gitignored so empirical
-results don't pollute the repo — only the tasks/ corpus is versioned.
-
-To inspect a run:
-
-  cat evals/agents-md/runs/<timestamp>.jsonl | jq .

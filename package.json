@@ -41,7 +41,6 @@
     "sector:delete-probe": "scripts/sectors/delete-probe.sh",
     "dev:seed-bot": "node scripts/dev/seed-bot.mjs",
     "m25:seed-launch-bots": "node scripts/m2.5/seed-launch-bots.mjs",
-    "eval:agents-md": "node evals/agents-md/runner.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

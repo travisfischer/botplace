@@ -90,15 +90,17 @@ These are small enough to land in the same PR or an immediate follow-up. None ar
 ### P2.5 — Probe 15 (the LLM-agent end-to-end exit signal) isn't a re-runnable eval
 
 **Reviewers:** how-we-build/prompt-and-eval-lifecycle (F1), core/autonomous-learning (F1), core/universal-evals (F1)
-**Evidence:** `docs/dev/probes/m3-bot-dx.md:373-415` defines probe 15 as a single human+stopwatch session with subjective pass criteria, no fixed task corpus, no scorecard, no machine-readable output, no pinned model. Three reviewers flagged the same gap from different angles: prompt-eval lifecycle (no regression detection), autonomous-learning (no captured trace for iteration), universal-evals (no eval coverage for the LLM-facing surface).
+**Evidence:** `docs/dev/probes/m3-bot-dx.md` Probe 15 is a single human+stopwatch session with subjective pass criteria, no fixed task corpus, no scorecard, no machine-readable output, no pinned model. Three reviewers flagged the same gap from different angles: prompt-eval lifecycle (no regression detection), autonomous-learning (no captured trace for iteration), universal-evals (no eval coverage for the LLM-facing surface).
 
-**Suggested remediation:** Land an `evals/agents-md/` corpus + `pnpm eval:agents-md` runner that:
-1. Pins a model (e.g. `claude-haiku-5` AND `claude-sonnet-5`).
-2. Runs N frozen bot specs against `/agents.md`.
-3. Verifies completion via the public attribution endpoint (probe 3 already does the read).
-4. Emits JSONL with `{task, model, agents_md_sha, elapsed_s, pass, transcript_path}` so iteration N+1 can compare against N.
+**Resolution: rejected — out of platform scope.** A scaffold was briefly landed (`evals/agents-md/` + `pnpm eval:agents-md`) and then removed. The reasoning:
 
-This isn't M3-blocking — but flag it explicitly as the M3.5 / M4 prereq, otherwise probe 15 becomes a perpetually-deferred ritual.
+The "thing under test" in the proposed eval is whether a third-party LLM agent (Claude Code, Cursor, ChatGPT) can correctly consume `/agents.md` and produce a working bot. That's an evaluation of LLM behavior on external documentation, not an evaluation of any code, contract, or behavior inside the Botplace platform. We don't have to be the ones running it.
+
+The reviewers applied the principle correctly given the inputs they had. Botplace's actual LLM-bearing surfaces — the M2.5 launch bots — are deterministic; there are no in-platform LLM consumers whose behavior we own. Probe 15 stays as a manual sanity check the operator can run when they're considering a major docs revision; it doesn't need automation.
+
+If we ever ship an in-platform LLM consumer (e.g. an MCP server with an LLM-backed tool, or LLM-driven launch bots), the universal-evals principle re-applies and an eval lives next to the surface it covers — at that point probably under the relevant feature directory, not as a generic `evals/agents-md/` artifact.
+
+The synthesis notes below ("Cross-cutting themes" #1) overstate the urgency by treating this as a milestone-level gap; in light of the scope correction it's a P3-or-lower observation, not a P2.
 
 ### P2.6 — Hybrid LLM-strategy snippets pin floating model IDs without rot detection
 
@@ -150,7 +152,7 @@ Listed compactly. Each came from a single reviewer; none are individually critic
 
 Three patterns showed up in 3+ reviewers each — worth flagging to the next milestone's planning:
 
-1. **Eval coverage for the LLM-facing artifact is the milestone's biggest unfinished business.** P2.5 + P2.6 + P3.21 are the same fundamental gap from three principle angles. The M3 *deliverable* is `/agents.md`; without an eval, every future edit is unverified. Recommend making "land an automated probe-15-equivalent" the M3.5 P0.
+1. ~~**Eval coverage for the LLM-facing artifact is the milestone's biggest unfinished business.** P2.5 + P2.6 + P3.21 are the same fundamental gap from three principle angles. The M3 *deliverable* is `/agents.md`; without an eval, every future edit is unverified. Recommend making "land an automated probe-15-equivalent" the M3.5 P0.~~ **Withdrawn — see P2.5 resolution above.** The proposed eval covers external LLM-agent behavior on our docs, not in-platform behavior. Out of scope; manual Probe 15 is sufficient. P2.6 and P3.21 reduce to "annotate model literals + version pins in snippets" (already done).
 
 2. **Migration claims are stronger than the artifacts that back them.** P2.1 (no operator-pause runbook), P2.2 (no external-consumer verification), P3.6 (status flipped pre-probe), P3.12 (no rollback path), P2.4 (no preflight collision check). Each individually is small; together they suggest the synthesis review oversold rollout discipline.
 
@@ -182,8 +184,8 @@ Three patterns showed up in 3+ reviewers each — worth flagging to the next mil
 
 **Defer to M3.5 / M4 prereq:**
 
-- [ ] **P2.5:** Land an automated `pnpm eval:agents-md` so probe 15 is repeatable. Make this M3.5 P0.
-- [ ] **P2.6:** Either env-var the model literals or add per-snippet date annotations.
+- [x] ~~**P2.5:** Land an automated `pnpm eval:agents-md` so probe 15 is repeatable.~~ **Rejected — out of platform scope; see P2.5 resolution above.** Probe 15 stays manual.
+- [ ] **P2.6:** Either env-var the model literals or add per-snippet date annotations. *(Done in this PR.)*
 - [ ] **P3.4, P3.20:** Docs source-of-truth tightening.
 
 **Defer to M4 polish window:**
