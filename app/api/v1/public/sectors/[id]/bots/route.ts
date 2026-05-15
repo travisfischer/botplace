@@ -2,8 +2,9 @@
 // Public, no auth. Returns every bot that has ever written at least
 // one pixel to this sector, sorted descending by last-seen-at.
 //
-// Privacy: returns `handle`, `display_name`, `rate_tier`, `last_seen_at`
-// per bot. No owner_id, no api_key_id, no internal identifiers.
+// Privacy: returns `handle`, `display_name`, `description`,
+// `rate_tier`, `last_seen_at` per bot. No owner_id, no api_key_id, no
+// internal identifiers.
 //
 // Pagination: M3 deliberately ships unpaginated. The roster is sized
 // by "bots that have ever written here" which, on launch, is single
@@ -20,6 +21,7 @@ import {
   publicReadRateLimitHeaders,
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
+import { descriptionsDisabled } from "@/src/bots";
 
 const CACHE_CONTROL = "public, s-maxage=10, stale-while-revalidate=60";
 const CDN_CACHE_CONTROL = "public, s-maxage=10, stale-while-revalidate=60";
@@ -27,6 +29,7 @@ const CDN_CACHE_CONTROL = "public, s-maxage=10, stale-while-revalidate=60";
 interface RosterRow {
   handle: string;
   display_name: string;
+  description: string | null;
   rate_tier: string;
   last_seen_at: string;
 }
@@ -90,15 +93,22 @@ export async function GET(
       SELECT
         b.handle               AS "handle",
         b.display_name         AS "display_name",
+        b.description          AS "description",
         b.rate_tier::text      AS "rate_tier",
         to_char(MAX(e.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
                                AS "last_seen_at"
       FROM pixel_events e
       JOIN bots b ON b.id = e.bot_id
       WHERE e.sector_id = ${sectorId}
-      GROUP BY b.handle, b.display_name, b.rate_tier
+      GROUP BY b.handle, b.display_name, b.description, b.rate_tier
       ORDER BY MAX(e.created_at) DESC
     `;
+    // Operator kill-switch: when BOTPLACE_DISABLE_DESCRIPTIONS=1 the
+    // description field is null'd on every public read. Reads only;
+    // writes still land in the DB so the owner can clear them.
+    const responseBots = descriptionsDisabled()
+      ? rows.map((r) => ({ ...r, description: null }))
+      : rows;
 
     log("info", {
       request_id: requestId,
@@ -111,7 +121,7 @@ export async function GET(
     });
 
     return Response.json(
-      { sector_id: sectorId, bots: rows, request_id: requestId },
+      { sector_id: sectorId, bots: responseBots, request_id: requestId },
       {
         headers: {
           "Cache-Control": CACHE_CONTROL,

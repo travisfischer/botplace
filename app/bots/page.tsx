@@ -11,6 +11,7 @@ import { listBotsForOwner } from "@/src/bots";
 import { mintKeyAction, revokeKeyAction, revokePatAction } from "./_actions";
 import { CreateBotForm } from "./_create-bot-form";
 import { CreatePatForm } from "./_create-pat-form";
+import { EditDescriptionForm } from "./_edit-description-form";
 
 // Renders `<prefix>…` so it's obvious at a glance that the full token
 // isn't being displayed. The trailing ellipsis is a visual cue; the
@@ -66,6 +67,10 @@ export default async function BotsPage() {
                     @{b.handle}
                   </code>{" "}
                   — <code>{b.id}</code> ({b.status}) — tier {b.rateTier}
+                  <EditDescriptionForm
+                    botId={b.id}
+                    currentDescription={b.description}
+                  />
                   <ul>
                     {b.apiKeys.length === 0 ? (
                       <li>No keys.</li>

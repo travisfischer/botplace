@@ -18,10 +18,14 @@ import {
   AuditActorKind,
   classifyBotUniqueViolation,
   createBotForOwner,
+  describeDescriptionRejection,
   mintBotApiKey,
   revokeBotApiKey,
+  updateBotDescription,
 } from "@/src/bots";
+import { validateDisplayName } from "@/src/bots/display-name";
 import { validateHandle } from "@/src/bots/handle";
+import { log } from "@/lib/log";
 
 export interface CreateBotState {
   ok: boolean;
@@ -62,21 +66,15 @@ export async function createBotAction(
   const handleErr = validateHandle(handle);
   if (handleErr) return { ok: false, message: handleErr.message };
 
-  const displayName = String(formData.get("display_name") ?? "").trim();
-  if (!displayName) return { ok: false, message: "Display name is required" };
-  if (displayName.length > MAX_NAME_LENGTH) {
-    return {
-      ok: false,
-      message: `Display name must be ${MAX_NAME_LENGTH} characters or fewer`,
-    };
-  }
+  const dn = validateDisplayName(formData.get("display_name") ?? "");
+  if (!dn.ok) return { ok: false, message: dn.message };
 
   try {
     const ownerId = await requireOwnerId();
     const result = await createBotForOwner({
       ownerId,
       handle,
-      displayName,
+      displayName: dn.value,
       pepper: pepperOrDie(),
       auditContext: {
         requestId: crypto.randomUUID(),
@@ -207,4 +205,122 @@ export async function revokePatAction(formData: FormData): Promise<void> {
 export async function listPatsForCurrentOwner() {
   const ownerId = await requireOwnerId();
   return listPersonalAccessTokensForOwner(ownerId);
+}
+
+export interface UpdateDescriptionState {
+  ok: boolean;
+  botId?: string;
+  message?: string;
+  /**
+   * Echoed so the user can correlate UI feedback with a server log
+   * line — surfaces in the form's saved/error chip.
+   */
+  requestId?: string;
+}
+
+// Soft cap to short-circuit hostile-large form posts before we run them
+// through the moderation pipeline. The bot-self HTTP route has a hard
+// MAX_BODY_BYTES check at the JSON-parse boundary; server actions don't
+// expose that knob, so we guard at the action entry. 4× the canonical
+// length cap is generous slack for whitespace + multibyte characters.
+const SOFT_RAW_DESCRIPTION_BYTE_CAP = 4_096;
+
+export async function updateDescriptionAction(
+  _prev: UpdateDescriptionState | null,
+  formData: FormData,
+): Promise<UpdateDescriptionState> {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
+  const path = "/bots#updateDescription";
+  const ownerId = await requireOwnerId();
+  const botId = String(formData.get("botId") ?? "");
+  if (!botId) {
+    log("warn", {
+      request_id: requestId,
+      path,
+      status: 400,
+      error_slug: "missing_bot_id",
+      auth_type: "session",
+      actor: "owner",
+      owner_id: ownerId,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { ok: false, message: "Missing bot id", requestId };
+  }
+
+  // Empty string is the owner's "clear it" gesture from the textarea.
+  // `updateBotDescription` trims and treats whitespace-only as null.
+  const raw = formData.get("description");
+  const rawString = raw === null ? null : String(raw);
+
+  if (rawString !== null && rawString.length > SOFT_RAW_DESCRIPTION_BYTE_CAP) {
+    log("warn", {
+      request_id: requestId,
+      path,
+      status: 413,
+      error_slug: "body_too_large",
+      auth_type: "session",
+      actor: "owner",
+      owner_id: ownerId,
+      bot_id: botId,
+      latency_ms: Date.now() - startedAt,
+    });
+    return {
+      ok: false,
+      botId,
+      requestId,
+      message: "Description is too large",
+    };
+  }
+
+  const result = await updateBotDescription({
+    botId,
+    ownerId,
+    raw: rawString,
+  });
+
+  if (!result.ok) {
+    const { slug, message } = describeDescriptionRejection(result.rejection);
+    const status = slug === "bot_not_found" ? 404 : 400;
+    log("warn", {
+      request_id: requestId,
+      path,
+      status,
+      error_slug: slug,
+      auth_type: "session",
+      actor: "owner",
+      owner_id: ownerId,
+      bot_id: botId,
+      field: "description",
+      length:
+        result.rejection.kind === "too_long"
+          ? result.rejection.length
+          : undefined,
+      denylist_version: result.denylistVersion,
+      denylist_term_hash:
+        result.rejection.kind === "blocked"
+          ? result.rejection.termHash
+          : undefined,
+      latency_ms: Date.now() - startedAt,
+    });
+    return { ok: false, botId, requestId, message };
+  }
+
+  log("info", {
+    request_id: requestId,
+    path,
+    status: 200,
+    auth_type: "session",
+    actor: "owner",
+    owner_id: ownerId,
+    bot_id: botId,
+    field: "description",
+    length: result.description?.length ?? 0,
+    redactions_count: result.redactions,
+    denylist_version: result.denylistVersion,
+    latency_ms: Date.now() - startedAt,
+  });
+
+  revalidatePath("/bots");
+  return { ok: true, botId, requestId };
 }

@@ -33,6 +33,7 @@
     "bot:mint-key": "scripts/bots/mint-key.sh",
     "bot:rotate-key": "scripts/bots/rotate-key.sh",
     "bot:revoke-key": "scripts/bots/revoke-key.sh",
+    "bot:set-description": "scripts/bots/set-description.sh",
     "pat:mint": "scripts/pat/mint.sh",
     "pat:list": "scripts/pat/list.sh",
     "pat:revoke": "scripts/pat/revoke.sh",

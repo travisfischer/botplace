@@ -2,6 +2,13 @@
 // every business operation lives here so it's reachable from a future
 // UI / MCP / CLI without going through HTTP.
 
+import { MAX_DESCRIPTION_LENGTH } from "@/lib/limits";
+import {
+  BLOCKED_LIST_VERSION,
+  containsBlockedTerm,
+  denylistTermHashForLog,
+  redactUrls,
+} from "@/lib/moderation";
 import { prisma } from "@/lib/prisma";
 import { mintKey } from "@/src/auth/api-keys";
 import { AuditActorKind } from "@/generated/prisma/enums";
@@ -49,10 +56,30 @@ export interface BotSummary {
   handle: string;
   /** M3: per-owner-unique freely-editable label. */
   displayName: string;
+  /** Self-declared bio. Null when unset. Post-moderation form (URLs redacted). */
+  description: string | null;
+  /** Bumps on every description write. Null while description is unset. */
+  descriptionUpdatedAt: Date | null;
   status: BotStatus;
   rateTier: BotRateTier;
   createdAt: Date;
   apiKeys: BotApiKeySummary[];
+}
+
+/**
+ * Public bot-detail shape. No `id`, no `apiKeys` — `handle` is the
+ * canonical public identifier. Used by `PATCH /api/v1/bots/me` (echoes
+ * post-write state) and `GET /api/v1/public/bots/[handle_or_id]`.
+ */
+export interface BotPublicDetail {
+  handle: string;
+  displayName: string;
+  description: string | null;
+  descriptionUpdatedAt: Date | null;
+  rateTier: BotRateTier;
+  createdAt: Date;
+  /** Most recent `PixelEvent.createdAt` across all sectors. Null if the bot has never written. */
+  lastSeenAt: Date | null;
 }
 
 export interface MintedBotApiKey {
@@ -66,6 +93,8 @@ export interface CreateBotResult {
   id: string;
   handle: string;
   displayName: string;
+  description: string | null;
+  descriptionUpdatedAt: Date | null;
   status: BotStatus;
   rateTier: BotRateTier;
   createdAt: Date;
@@ -149,6 +178,8 @@ export async function createBotForOwner(input: {
         id: true,
         handle: true,
         displayName: true,
+        description: true,
+        descriptionUpdatedAt: true,
         status: true,
         rateTier: true,
         createdAt: true,
@@ -183,6 +214,8 @@ export async function createBotForOwner(input: {
       id: bot.id,
       handle: bot.handle,
       displayName: bot.displayName,
+      description: bot.description,
+      descriptionUpdatedAt: bot.descriptionUpdatedAt,
       status: bot.status,
       rateTier: bot.rateTier,
       createdAt: bot.createdAt,
@@ -206,6 +239,8 @@ export async function listBotsForOwner(
       id: true,
       handle: true,
       displayName: true,
+      description: true,
+      descriptionUpdatedAt: true,
       status: true,
       rateTier: true,
       createdAt: true,
@@ -337,10 +372,44 @@ export function botSummaryToJson(b: BotSummary) {
     // `display_name` is the freely-editable label.
     handle: b.handle,
     display_name: b.displayName,
+    description: b.description,
+    description_updated_at: b.descriptionUpdatedAt?.toISOString() ?? null,
     status: b.status,
     rate_tier: b.rateTier,
     created_at: b.createdAt.toISOString(),
     api_keys: b.apiKeys.map(botApiKeySummaryToJson),
+  };
+}
+
+/**
+ * Operator kill-switch for description-bearing public reads. When
+ * `BOTPLACE_DISABLE_DESCRIPTIONS=1` is set in process env, every public
+ * read that surfaces `description` (or `bot_description`) returns null
+ * for that field, regardless of what's in the DB. Use during incident
+ * response if a moderation false-negative reaches public attribution —
+ * the env var takes effect on the next request (no redeploy needed
+ * once the env var is updated in Vercel project settings).
+ *
+ * Reads only. Writes are NOT gated by this — bots and owners can still
+ * update / clear descriptions while reads are suppressed, so the fix
+ * loop (owner clears the offending description) keeps working.
+ */
+export function descriptionsDisabled(): boolean {
+  return process.env.BOTPLACE_DISABLE_DESCRIPTIONS === "1";
+}
+
+export function botPublicDetailToJson(b: BotPublicDetail) {
+  const disabled = descriptionsDisabled();
+  return {
+    handle: b.handle,
+    display_name: b.displayName,
+    description: disabled ? null : b.description,
+    description_updated_at: disabled
+      ? null
+      : (b.descriptionUpdatedAt?.toISOString() ?? null),
+    rate_tier: b.rateTier,
+    created_at: b.createdAt.toISOString(),
+    last_seen_at: b.lastSeenAt?.toISOString() ?? null,
   };
 }
 
@@ -358,6 +427,8 @@ export function createBotResultToJson(r: CreateBotResult) {
     id: r.id,
     handle: r.handle,
     display_name: r.displayName,
+    description: r.description,
+    description_updated_at: r.descriptionUpdatedAt?.toISOString() ?? null,
     status: r.status,
     rate_tier: r.rateTier,
     created_at: r.createdAt.toISOString(),
@@ -429,4 +500,234 @@ export async function rotateBotApiKey(input: {
       createdAt: key.createdAt,
     };
   });
+}
+
+// ----------------------------------------------------------------------------
+// Description writes + public detail reads (post-MVP bot-descriptions feature)
+// ----------------------------------------------------------------------------
+
+export type DescriptionRejection =
+  | { kind: "type" }
+  | { kind: "too_long"; length: number }
+  | {
+      kind: "blocked";
+      /**
+       * Short HMAC of the matched deny-list term (16 hex chars), or
+       * undefined if the moderation HMAC secret isn't available. Safe
+       * to surface in logs — preserves the no-echo invariant. Operators
+       * resolve it back to a term locally; see `lib/moderation/index.ts`
+       * `hashBlockedTerm`.
+       */
+      termHash?: string;
+    }
+  | { kind: "not_found" };
+
+export type DescriptionRejectionSlug =
+  | "description_invalid"
+  | "description_too_long"
+  | "description_blocked"
+  | "bot_not_found";
+
+/**
+ * Map a `DescriptionRejection` to a stable `{slug, message}` pair both
+ * write adapters (HTTP PATCH and the owner-side server action) emit.
+ * Single source of truth for response phrasing — if a slug changes,
+ * every consumer changes together.
+ *
+ * Messages are intentionally generic; the deny-list-match case never
+ * echoes the matched term.
+ */
+export function describeDescriptionRejection(
+  r: DescriptionRejection,
+): { slug: DescriptionRejectionSlug; message: string } {
+  switch (r.kind) {
+    case "type":
+      return {
+        slug: "description_invalid",
+        message: "`description` must be a string or null",
+      };
+    case "too_long":
+      return {
+        slug: "description_too_long",
+        message: `\`description\` must be at most ${MAX_DESCRIPTION_LENGTH} characters`,
+      };
+    case "blocked":
+      return {
+        slug: "description_blocked",
+        message: "`description` is not allowed",
+      };
+    case "not_found":
+      return {
+        slug: "bot_not_found",
+        message: "Bot not found",
+      };
+  }
+}
+
+export type UpdateDescriptionResult =
+  | {
+      ok: true;
+      bot: BotPublicDetail;
+      /** Final stored form (post-redaction). `null` if cleared. */
+      description: string | null;
+      /** Number of URL/email redactions applied to the stored form. */
+      redactions: number;
+      /** Stable version stamp of the deny list used. */
+      denylistVersion: string;
+    }
+  | { ok: false; rejection: DescriptionRejection; denylistVersion: string };
+
+/**
+ * Validate + moderate + persist a description update for a single bot.
+ *
+ * Input `raw`:
+ *   - `string` → trim, normalize empty → null, length-check, URL-redact,
+ *                deny-list check, store.
+ *   - `null`   → clear the field.
+ *   - anything else → `{ kind: "type" }`.
+ *
+ * If `ownerId` is provided, scopes the update to a bot owned by that
+ * owner — used by the owner UI server action so a malicious form post
+ * can't update another owner's description. The bot-self PATCH leaves
+ * `ownerId` unset (auth already proved bot identity via the key).
+ *
+ * Returns `{ kind: "not_found" }` when scoped lookup misses.
+ */
+export async function updateBotDescription(input: {
+  botId: string;
+  raw: unknown;
+  ownerId?: string;
+}): Promise<UpdateDescriptionResult> {
+  if (input.raw !== null && typeof input.raw !== "string") {
+    return {
+      ok: false,
+      rejection: { kind: "type" },
+      denylistVersion: BLOCKED_LIST_VERSION,
+    };
+  }
+
+  let stored: string | null = null;
+  let redactions = 0;
+  if (typeof input.raw === "string") {
+    const trimmed = input.raw.trim();
+    if (trimmed.length > 0) {
+      if (trimmed.length > MAX_DESCRIPTION_LENGTH) {
+        return {
+          ok: false,
+          rejection: { kind: "too_long", length: trimmed.length },
+          denylistVersion: BLOCKED_LIST_VERSION,
+        };
+      }
+      const redacted = redactUrls(trimmed);
+      if (containsBlockedTerm(redacted.text)) {
+        return {
+          ok: false,
+          rejection: {
+            kind: "blocked",
+            termHash: denylistTermHashForLog(redacted.text),
+          },
+          denylistVersion: BLOCKED_LIST_VERSION,
+        };
+      }
+      stored = redacted.text;
+      redactions = redacted.redactions;
+    }
+  }
+
+  // Both paths use `updateMany` + count check so we can detect a
+  // missing-row case without depending on Prisma's P2025 throw. The
+  // bot-self PATCH path has auth already, but a row could in principle
+  // be deleted between auth and this write — handling it explicitly is
+  // cheap and keeps the unscoped/scoped behavior symmetric.
+  const where =
+    input.ownerId !== undefined
+      ? { id: input.botId, ownerId: input.ownerId }
+      : { id: input.botId };
+  const updated = await prisma.bot.updateMany({
+    where,
+    data: {
+      description: stored,
+      descriptionUpdatedAt: new Date(),
+    },
+  });
+  if (updated.count === 0) {
+    return {
+      ok: false,
+      rejection: { kind: "not_found" },
+      denylistVersion: BLOCKED_LIST_VERSION,
+    };
+  }
+
+  // Read back the fresh public detail. `lastSeenAt` requires a separate
+  // aggregate query; run it in parallel with the read-back.
+  const [bot, lastSeenAt] = await Promise.all([
+    prisma.bot.findUnique({
+      where: { id: input.botId },
+      select: {
+        handle: true,
+        displayName: true,
+        description: true,
+        descriptionUpdatedAt: true,
+        rateTier: true,
+        createdAt: true,
+      },
+    }),
+    lastSeenAtForBot(input.botId),
+  ]);
+  // bot is non-null here: either the unscoped update succeeded, or the
+  // scoped updateMany matched a row.
+  return {
+    ok: true,
+    bot: { ...bot!, lastSeenAt },
+    description: stored,
+    redactions,
+    denylistVersion: BLOCKED_LIST_VERSION,
+  };
+}
+
+/** Most recent `PixelEvent.createdAt` across all sectors for this bot. */
+async function lastSeenAtForBot(botId: string): Promise<Date | null> {
+  const row = await prisma.pixelEvent.findFirst({
+    where: { botId },
+    select: { createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return row?.createdAt ?? null;
+}
+
+/**
+ * Public bot-detail lookup with dual key — either a globally-unique
+ * `handle` or a cuid id. The caller is responsible for the shape-based
+ * dispatch (cuid: `/^c[a-z0-9]{24}$/` → `id`; otherwise `handle`).
+ *
+ * Returns null when the bot doesn't exist; caller maps to 404.
+ */
+export async function getBotPublicDetail(by: {
+  handle?: string;
+  id?: string;
+}): Promise<BotPublicDetail | null> {
+  if (!by.handle && !by.id) return null;
+  const bot = await prisma.bot.findUnique({
+    where: by.id ? { id: by.id } : { handle: by.handle! },
+    select: {
+      id: true,
+      handle: true,
+      displayName: true,
+      description: true,
+      descriptionUpdatedAt: true,
+      rateTier: true,
+      createdAt: true,
+    },
+  });
+  if (!bot) return null;
+  const lastSeenAt = await lastSeenAtForBot(bot.id);
+  return {
+    handle: bot.handle,
+    displayName: bot.displayName,
+    description: bot.description,
+    descriptionUpdatedAt: bot.descriptionUpdatedAt,
+    rateTier: bot.rateTier,
+    createdAt: bot.createdAt,
+    lastSeenAt,
+  };
 }
