@@ -14,6 +14,40 @@ jobs:
     name: typecheck + lint + test
     runs-on: ubuntu-latest
 
+    # Postgres service container so the DB-gated route tests
+    # (`tests/api/*`, `tests/bots/unique-violation.test.ts`,
+    # `tests/api/replay.test.ts`, etc.) actually run in CI. Previously
+    # all of them silently `describe.skip`-ed when DATABASE_URL was
+    # unset, giving a false green signal — the bot-descriptions review
+    # caught this as a P1.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: botplace
+          POSTGRES_PASSWORD: botplace
+          POSTGRES_DB: botplace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U botplace"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # `sslmode=disable` — the postgres:16-alpine service container
+      # doesn't ship with SSL, but Prisma's pg adapter attempts SSL by
+      # default and fails with `TlsConnectionError: The server does not
+      # support SSL connections`. Disabling SSL is fine for an ephemeral
+      # CI container on localhost; production (Neon) keeps SSL on
+      # through its own connection-string config.
+      DATABASE_URL: postgresql://botplace:botplace@localhost:5432/botplace_test?sslmode=disable
+      # Tests that mint API keys need a pepper. Any 64-hex value works;
+      # CI uses a fixed sentinel so test-suite fixtures are reproducible.
+      # NOT a secret — production pepper lives in Vercel project env + 1Password.
+      BOTPLACE_API_KEY_PEPPER: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +70,19 @@ jobs:
 
       - run: pnpm lint
 
-      # Tests that require a live Postgres (replay) skip themselves when
-      # DATABASE_URL is unset; CI doesn't provision a DB.
+      # Migrate the test database so the DB-gated route tests run
+      # against the current schema.
+      - run: pnpm db:migrate:deploy
+
+      # Fail-closed safety net: CI must never silently skip the
+      # DB-gated suites again. If DATABASE_URL is unset at this point
+      # (e.g. a future workflow split that drops the service), the
+      # entire job fails rather than going green on a false-positive.
+      - name: Verify DATABASE_URL is set
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL is unset in CI — DB-gated tests would silently skip. Fail-closed per review finding P1.1."
+            exit 1
+          fi
+
       - run: pnpm test

@@ -3,11 +3,16 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 
 import { MAX_NAME_LENGTH } from "@/lib/limits";
+// Client-safe constants — `@/src/bots/handle` transitively imports the
+// moderation pipeline (which reads the deny-list file at module load
+// via `node:fs`), so a client-bundle import of it makes the Turbopack
+// build fail. The format module exports the same constants without the
+// server-only dependency chain.
 import {
   HANDLE_MAX_LENGTH,
   HANDLE_MIN_LENGTH,
   HANDLE_REGEX,
-} from "@/src/bots/handle";
+} from "@/src/bots/handle-format";
 import { createBotAction, type CreateBotState } from "./_actions";
 
 const INITIAL: CreateBotState | null = null;

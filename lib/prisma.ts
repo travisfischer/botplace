@@ -24,11 +24,22 @@ const globalForPrisma = globalThis as unknown as {
  * connection mode (pooled, unpooled, direct). If a future caller hits
  * a host where strict cert checking isn't possible, they can override
  * the URL explicitly.
+ *
+ * **Explicit `sslmode=disable` is respected** so non-TLS hosts (CI
+ * service containers, in-process test fixtures) can opt out. Anything
+ * else gets normalized up to `verify-full`. The opt-out is intentional
+ * and explicit — production / preview URLs never set `sslmode=disable`,
+ * so this branch is a no-op for them.
  */
+export function _normalizeSslModeForTest(rawUrl: string | undefined): string | undefined {
+  return normalizeSslMode(rawUrl);
+}
+
 function normalizeSslMode(rawUrl: string | undefined): string | undefined {
   if (!rawUrl) return rawUrl;
   try {
     const url = new URL(rawUrl);
+    if (url.searchParams.get("sslmode") === "disable") return url.toString();
     url.searchParams.set("sslmode", "verify-full");
     return url.toString();
   } catch {

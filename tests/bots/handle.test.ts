@@ -81,4 +81,19 @@ describe("validateHandle", () => {
       expect(RESERVED_HANDLES).toContain("travis-fischer");
     });
   });
+
+  describe("content moderation", () => {
+    it("rejects a handle containing a deny-list term", () => {
+      // "porn" is a v1 deny-list term (sexual-explicit). Handle regex
+      // allows lowercase letters and hyphens; we construct a syntactically
+      // valid handle around it.
+      const result = validateHandle("the-porn-bot");
+      expect(result?.slug).toBe("handle_blocked");
+    });
+
+    it("uses a generic message that does not echo the matched term", () => {
+      const result = validateHandle("the-porn-bot");
+      expect(result?.message).not.toContain("porn");
+    });
+  });
 });

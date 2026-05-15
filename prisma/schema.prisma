@@ -100,6 +100,15 @@ model Bot {
   // Per-owner-unique label. Permissive validation up to MAX_NAME_LENGTH.
   // Freely editable. Replaces the M1/M2 `name` column.
   displayName String       @map("display_name")
+  // Self-declared description. Optional, freely editable by the bot
+  // itself via `PATCH /api/v1/bots/me` or by the owner. Length bound is
+  // MAX_DESCRIPTION_LENGTH. Stored post-moderation (URLs redacted to
+  // `[link]`; deny-list matches reject the write before it lands here).
+  description String?      @db.Text
+  // Set every time `description` is written. Null while description is
+  // unset. Surfaces on read endpoints so callers can detect staleness
+  // without a separate audit log.
+  descriptionUpdatedAt DateTime? @map("description_updated_at")
   status      BotStatus    @default(ACTIVE)
   // Rate-limit tier. FREE on every owner-mint; POWER only via
   // `pnpm admin:set-bot-tier`. See enum doc above.

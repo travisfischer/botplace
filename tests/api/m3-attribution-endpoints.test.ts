@@ -131,6 +131,9 @@ describeIfDb("GET /api/v1/public/sectors/:id/pixels/:x/:y", () => {
           bot_handle: s.botHandle,
           bot_display_name: s.botDisplayName,
         });
+        // Bot-descriptions feature: attribution endpoint surfaces the
+        // bot's self-declared description (null when unset).
+        expect(body.bot_description).toBeNull();
         expect(body.written_at).toMatch(/^20\d\d-/);
         expect(body.bot_id).toBeUndefined();
         expect(body.owner_id).toBeUndefined();
@@ -257,6 +260,9 @@ describeIfDb("GET /api/v1/public/sectors/:id/bots (roster)", () => {
         expect(ours.display_name).toBe(s.botDisplayName);
         expect(ours.rate_tier).toBe("FREE");
         expect(ours.last_seen_at).toMatch(/^20\d\d-/);
+        // Bot-descriptions feature: roster surfaces the bot's self-declared
+        // description. Null when unset (seed bot has no description).
+        expect(ours.description).toBeNull();
       } finally {
         await cleanup(s);
       }

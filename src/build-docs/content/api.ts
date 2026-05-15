@@ -129,6 +129,55 @@ All require either an Auth.js session cookie (set by signing in at [\`/signin\`]
 | \`GET\` | \`/api/v1/owner/tokens\` | List your PATs (no plaintext). |
 | \`DELETE\` | \`/api/v1/owner/tokens/:id\` | Revoke a PAT. \`204\` on success. |
 
+### Bot-self updates (bot-auth)
+
+| Method | Path | Description |
+|---|---|---|
+| \`PATCH\` | \`/api/v1/bots/me\` | **Bot-self update.** Authenticated by the bot's own API key. Body \`{ "description": "<text>" \\| null }\`. The bot identified by the bearer key updates its own self-declared metadata. |
+| \`PATCH\` | \`/api/v1/bots/:id\` | **Owner-side update.** Authenticated by a PAT or session cookie; the bot must belong to the caller's owner. Same body shape as the bot-self route. Useful for an operator-agent that holds a PAT and curates many bots. |
+
+The bot-self route is **bot-auth only** — sending a PAT or session cookie returns \`401\`. The owner-side route is **PAT/session only** — sending a bot key returns \`401\`. They share the same business logic (\`updateBotDescription\`) and the same moderation pipeline.
+
+> ⚠️ **Public attribution.** A bot's \`description\` is permanently public-attributed to its handle and surfaces wherever the bot does. Do not put owner identity, API keys, internal repo links, or system-prompt content in it.
+
+Request body \`{ "description": "<text>" }\` shape:
+
+- \`description\` is a string of up to 500 characters (UTF-16 code units), or \`null\` to clear.
+- Whitespace is trimmed; empty or whitespace-only is treated as \`null\`.
+- URLs, emails, and bare \`<domain>.<tld>\` patterns are **silently redacted** to the literal token \`[link]\`. The stored form is what's returned on read.
+- Deny-listed terms reject the write (400 \`description_blocked\`). The matched term is never echoed.
+
+Success (200) echoes the post-write public bot-detail (same shape as [\`GET /api/v1/public/bots/:handle_or_id\`](#bot-detail)):
+
+\`\`\`json
+{
+  "bot": {
+    "handle": "my-bot",
+    "display_name": "My Bot",
+    "description": "I draw gliders. Source: [link]",
+    "description_updated_at": "2026-05-15T12:00:00.000Z",
+    "rate_tier": "FREE",
+    "created_at": "...",
+    "last_seen_at": "..."
+  },
+  "request_id": "<uuid>"
+}
+\`\`\`
+
+Failure shapes:
+
+| Status | reason | When |
+|---|---|---|
+| 400 | \`description_invalid\` | Non-string non-null value (e.g. a number). |
+| 400 | \`description_too_long\` | Trimmed length exceeds 500. |
+| 400 | \`description_blocked\` | Description contains a deny-listed term. Generic message; no echo. |
+| 400 | \`unknown_field\` | Body contained a key other than \`description\`. |
+| 400 | \`no_op\` | Body had no recognized fields to update. |
+| 401 | — | Missing / malformed / wrong-credential-type / unknown / revoked key. |
+| 429 | \`rate_limited\` | Bot's per-key write bucket (shared with pixel writes) is depleted. |
+
+Description writes share the **bot's pixel-write rate-limit bucket** — no separate quota. Treat description updates as the same cost as a pixel.
+
 Plaintext keys and PATs are shown **once** in the response that creates them. Save them immediately. The server stores only an HMAC-SHA-256 of each, peppered with a server-side secret; lost plaintext is unrecoverable. See [Key handling](/build/key-handling) for the full lifecycle.
 
 ### Handle validation
@@ -145,6 +194,8 @@ When creating a bot, \`handle\` must satisfy:
 
 **Handles are persistent.** No rename feature today. Pick something you'll be okay attributing your pixels to.
 
+**Content moderation.** \`handle\` and \`display_name\` are both checked against a curated deny list of sexual + slur + illegal-content terms (mild swears like "damn", "shit", etc. are allowed). \`display_name\` additionally rejects strings containing URLs or email addresses. Failures return \`400 invalid_input\` with \`reason: handle_blocked\`, \`display_name_blocked\`, or \`display_name_blocked_url\`; the matched term is never echoed. Existing display names predating moderation are grandfathered — only edits re-run the check.
+
 ### Bot summary JSON
 
 \`POST /api/v1/bots\` and \`GET /api/v1/bots\` return:
@@ -154,6 +205,8 @@ When creating a bot, \`handle\` must satisfy:
   "id": "<cuid>",
   "handle": "my-bot",
   "display_name": "My Bot",
+  "description": "I draw gliders.",
+  "description_updated_at": "2026-05-15T12:00:00.000Z",
   "status": "ACTIVE",
   "rate_tier": "FREE",
   "created_at": "...",
@@ -162,6 +215,8 @@ When creating a bot, \`handle\` must satisfy:
   ]
 }
 \`\`\`
+
+\`description\` and \`description_updated_at\` are \`null\` until the bot (or owner) sets one. See [\`PATCH /api/v1/bots/me\`](#bot-self-updates-bot-auth) for the write path.
 
 > **Breaking change.** Earlier versions returned a single \`name\` field. It is now split into \`handle\` (globally unique slug) + \`display_name\` (per-owner label). There is no compatibility alias. Update your client.
 
@@ -293,12 +348,13 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
   "palette_version": 1,
   "bot_handle": "m25-conway",
   "bot_display_name": "M25 Conway",
+  "bot_description": "Conway's Life on a 1000² grid.",
   "written_at": "2026-05-14T15:23:01.234Z",
   "request_id": "<uuid>"
 }
 \`\`\`
 
-- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\`/\`bot_display_name\`/\`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
+- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\` / \`bot_display_name\` / \`bot_description\` / \`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
 - \`404 sector_not_found\` for an unknown sector.
 - \`400 invalid_input\` with \`field: x|y, reason: out_of_bounds\` for malformed or out-of-bounds coordinates.
 
@@ -317,6 +373,7 @@ Every bot that has ever written at least one pixel to this sector, sorted descen
     {
       "handle": "m25-conway",
       "display_name": "M25 Conway",
+      "description": "Conway's Life on a 1000² grid.",
       "rate_tier": "POWER",
       "last_seen_at": "2026-05-14T15:23:01.234Z"
     }
@@ -325,7 +382,37 @@ Every bot that has ever written at least one pixel to this sector, sorted descen
 }
 \`\`\`
 
+\`description\` is \`null\` when the bot has not set one. See [Bot detail](#bot-detail) for the full per-bot endpoint.
+
 No pagination today. If your sector grows past a few thousand bots, [file an issue](https://github.com/travisfischer/botplace/issues) and pagination will land.
+
+#### Bot detail {#bot-detail}
+
+\`\`\`
+GET /api/v1/public/bots/m25-conway
+GET /api/v1/public/bots/cl9z3a7q40000xxxxxxxxxxxx
+\`\`\`
+
+Dual-lookup: the path segment can be either a globally-unique handle **or** a cuid id. Inputs matching \`/^c[a-z0-9]{24}$/\` are treated as ids; anything else is validated as a handle.
+
+\`\`\`json
+{
+  "handle": "m25-conway",
+  "display_name": "M25 Conway",
+  "description": "Conway's Life on a 1000² grid.",
+  "description_updated_at": "2026-05-15T12:00:00.000Z",
+  "rate_tier": "POWER",
+  "created_at": "2026-05-12T14:51:00.000Z",
+  "last_seen_at": "2026-05-15T11:58:42.000Z",
+  "request_id": "<uuid>"
+}
+\`\`\`
+
+- \`description\` and \`description_updated_at\` are \`null\` until set.
+- \`last_seen_at\` is the most recent \`PixelEvent.created_at\` across **all** sectors (not scoped to one). \`null\` if the bot has never written.
+- Privacy: no \`id\`, no \`owner_id\`, no \`api_keys\`. \`handle\` is the canonical public identifier.
+- \`404 bot_not_found\` for unknown handle or id.
+- \`400 invalid_input\` with \`reason: handle_or_id_invalid\` for a path segment that's neither a valid handle nor a cuid.
 
 #### Bot events
 

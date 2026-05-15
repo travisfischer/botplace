@@ -3,12 +3,12 @@ import {
   jsonError,
   jsonInvalidInput,
   jsonOk,
-  MAX_NAME_LENGTH,
   newRouteContext,
   readJsonBody,
   requirePepper,
   resolveOwner,
 } from "@/lib/route-helpers";
+import { denylistTermHashForLog } from "@/lib/moderation";
 import {
   AuditActorKind,
   botSummaryToJson,
@@ -17,6 +17,7 @@ import {
   createBotResultToJson,
   listBotsForOwner,
 } from "@/src/bots";
+import { validateDisplayName } from "@/src/bots/display-name";
 import { validateHandle } from "@/src/bots/handle";
 
 const PATH = "/api/v1/bots";
@@ -43,42 +44,41 @@ export async function POST(request: Request) {
   // for global uniqueness.
   const handleErr = validateHandle(body.handle);
   if (handleErr) {
+    const termHash =
+      handleErr.slug === "handle_blocked" && typeof body.handle === "string"
+        ? denylistTermHashForLog(body.handle)
+        : undefined;
     return jsonInvalidInput(ctx, {
       field: "handle",
       reason: handleErr.slug,
       message: handleErr.message,
-      extra: owner.logFields,
+      extra: {
+        ...owner.logFields,
+        ...(termHash ? { denylist_term_hash: termHash } : {}),
+      },
     });
   }
 
-  // Display name: required string, length-bound by MAX_NAME_LENGTH.
-  // Trimmed before validation; trailing whitespace shouldn't bypass the
-  // length cap or look weird in the listing UI.
-  if (typeof body.display_name !== "string") {
+  // Display name: required string, trimmed, length-bound, and
+  // content-moderated (URLs rejected, deny-list rejected).
+  const dn = validateDisplayName(body.display_name);
+  if (!dn.ok) {
+    const termHash =
+      dn.slug === "display_name_blocked" &&
+      typeof body.display_name === "string"
+        ? denylistTermHashForLog(body.display_name)
+        : undefined;
     return jsonInvalidInput(ctx, {
       field: "display_name",
-      reason: "display_name_required",
-      message: "`display_name` is required and must be a string",
-      extra: owner.logFields,
+      reason: dn.slug,
+      message: dn.message,
+      extra: {
+        ...owner.logFields,
+        ...(termHash ? { denylist_term_hash: termHash } : {}),
+      },
     });
   }
-  const displayName = body.display_name.trim();
-  if (displayName.length === 0) {
-    return jsonInvalidInput(ctx, {
-      field: "display_name",
-      reason: "display_name_empty",
-      message: "`display_name` must not be empty",
-      extra: owner.logFields,
-    });
-  }
-  if (displayName.length > MAX_NAME_LENGTH) {
-    return jsonInvalidInput(ctx, {
-      field: "display_name",
-      reason: "display_name_too_long",
-      message: `\`display_name\` must be at most ${MAX_NAME_LENGTH} characters`,
-      extra: owner.logFields,
-    });
-  }
+  const displayName = dn.value;
 
   const pepper = requirePepper(ctx);
   if ("response" in pepper) return pepper.response;
