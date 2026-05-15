@@ -274,9 +274,13 @@ Edge cases:
 curl -s -o /dev/null -w "%{http_code}\n" \
   "$BOTPLACE_URL/api/v1/public/sectors/sector-1/pixels/9999/0"
 
-# Unwritten coord → 404 pixel_not_found.
-curl -s -w "\n%{http_code}\n" \
-  "$BOTPLACE_URL/api/v1/public/sectors/sector-1/pixels/123/456" | tail -2
+# Unwritten coord → 200 with default-state pixel (null attribution).
+# `written_at: null` is the discriminator clients use to know "no bot
+# has written here yet." Previously 404 pixel_not_found — flipped
+# post-ship because every (x, y) in bounds IS a pixel.
+curl -fsS "$BOTPLACE_URL/api/v1/public/sectors/sector-1/pixels/123/456" \
+  | jq '{x, y, color, palette_version, bot_handle, written_at}'
+# Expected: color=0, palette_version=<sector current>, bot_handle=null, written_at=null.
 ```
 
 ---

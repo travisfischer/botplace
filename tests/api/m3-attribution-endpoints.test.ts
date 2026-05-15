@@ -5,7 +5,7 @@
 // Coverage:
 //   - GET /api/v1/public/sectors/:id/pixels/:x/:y
 //       * happy path: returns bot_handle + bot_display_name
-//       * pixel never written: 404 pixel_not_found
+//       * pixel never written: 200 with null attribution (default-state pixel)
 //       * out of bounds: 400 invalid_input field=x|y
 //       * non-numeric coords: 400 invalid_input
 //       * unknown sector: 404 sector_not_found
@@ -142,7 +142,7 @@ describeIfDb("GET /api/v1/public/sectors/:id/pixels/:x/:y", () => {
   );
 
   it(
-    "returns 404 pixel_not_found for a coord with no event",
+    "returns 200 with null attribution for a coord with no event",
     { timeout: 30_000 },
     async () => {
       const s = await seed();
@@ -150,9 +150,19 @@ describeIfDb("GET /api/v1/public/sectors/:id/pixels/:x/:y", () => {
         const res = await getPixel(new Request("http://test/"), {
           params: Promise.resolve({ id: s.sectorId, x: "10", y: "10" }),
         });
-        expect(res.status).toBe(404);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Cache-Control")).toMatch(/s-maxage=2/);
         const body = await res.json();
-        expect(body.error).toBe("pixel_not_found");
+        expect(body).toMatchObject({
+          x: 10,
+          y: 10,
+          color: 0,
+          palette_version: 1,
+          bot_handle: null,
+          bot_display_name: null,
+          written_at: null,
+        });
+        expect(body.request_id).toBeTruthy();
       } finally {
         await cleanup(s);
       }

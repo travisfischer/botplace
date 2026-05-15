@@ -2,13 +2,20 @@
 // denormalized latest-event attribution. The "click-to-inspect"
 // backbone added in M3.
 //
-// Two reads in one response:
+// Always 200 for an in-bounds coordinate. A pixel exists at every
+// (x, y); unwritten coords return the default-state pixel with null
+// attribution fields. Callers discriminate on `written_at !== null`,
+// not on HTTP status. The earlier `404 pixel_not_found` shape was
+// flipped post-ship because it conflated "this coord isn't a pixel"
+// (never true) with "no bot has written here yet."
 //
-//   1. The pixel's CURRENT color from the chunk byte at (x, y). This
-//      is canonical — the chunk is the source of truth. If a pixel has
-//      never been written, the chunk byte is 0 (the default), but we
-//      do NOT serve that as a successful pixel — there's no event to
-//      attribute. Callers get 404 `pixel_not_found` instead.
+// Two reads compose the response:
+//
+//   1. The pixel's CURRENT color. The chunk byte is canonical, but
+//      PixelEvent is append-only and writes always update the chunk,
+//      so "no event for this coord" ⇒ "chunk byte is `default_color`".
+//      We derive color from the event row when present, from
+//      `meta.default_color` when absent — no extra chunk read.
 //
 //   2. The MOST RECENT PixelEvent for (sector_id, x, y), used to
 //      attribute the current color. The event row carries
@@ -151,26 +158,30 @@ export async function GET(
     });
 
     if (!event) {
-      // No event for this coordinate yet. Return 404 rather than a
-      // synthetic "default-color" response — the contract is "show me
-      // the bot that wrote this pixel," and there isn't one.
       log("info", {
         request_id: requestId,
         path,
-        status: 404,
-        error_slug: "pixel_not_found",
+        status: 200,
         auth_type: "public",
         sector_id: sectorId,
+        x,
+        y,
+        bot_handle: null,
         latency_ms: Date.now() - startedAt,
       });
       return Response.json(
-        { error: "pixel_not_found", request_id: requestId },
         {
-          status: 404,
+          x,
+          y,
+          color: meta.meta.default_color,
+          palette_version: meta.meta.palette_version,
+          bot_handle: null,
+          bot_display_name: null,
+          written_at: null,
+          request_id: requestId,
+        },
+        {
           headers: {
-            // Cache 404s briefly so the click-to-inspect UX doesn't
-            // hammer the DB on every blank-canvas click. SWR keeps
-            // the response cheap once the canvas fills in.
             "Cache-Control": CACHE_CONTROL,
             "CDN-Cache-Control": CDN_CACHE_CONTROL,
             "X-Request-Id": requestId,

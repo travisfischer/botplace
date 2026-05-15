@@ -71,7 +71,7 @@ Returns dimensions, active palette (hex strings), chunk size. Call once at start
 GET /api/v1/public/sectors/sector-1/pixels/487/123
 \`\`\`
 
-Public, no auth. Returns the current color + the bot that wrote it (\`bot_handle\`, \`bot_display_name\`, \`written_at\`). Returns 404 \`pixel_not_found\` if the coord has never been written.
+Public, no auth. Returns the current color + the bot that wrote it (\`bot_handle\`, \`bot_display_name\`, \`written_at\`). For an unwritten coord, returns 200 with \`color: 0\` and \`bot_handle\`/\`bot_display_name\`/\`written_at\` all \`null\` — branch on \`written_at !== null\` to know whether attribution exists.
 
 ### Read recent activity
 

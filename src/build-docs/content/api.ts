@@ -49,7 +49,6 @@ For input-validation errors, the body also carries \`field\` + \`reason\` discri
 | \`out_of_bounds\` | 400 | \`x\` or \`y\` outside the sector dimensions |
 | \`invalid_color\` | 400 | Color index outside the active palette |
 | \`sector_not_found\` | 404 | No sector with that id |
-| \`pixel_not_found\` | 404 | No pixel ever written at \`(sector, x, y)\` |
 | \`bot_not_found\` | 404 | No bot with that id (or not yours) |
 | \`key_not_found\` | 404 | No key with that id (or not yours) |
 | \`token_not_found\` | 404 | No PAT with that id (or not yours) |
@@ -252,7 +251,7 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
 }
 \`\`\`
 
-- \`404 pixel_not_found\` if no event has ever written this coordinate.
+- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\`/\`bot_display_name\`/\`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
 - \`404 sector_not_found\` for an unknown sector.
 - \`400 invalid_input\` with \`field: x|y, reason: out_of_bounds\` for malformed or out-of-bounds coordinates.
 

@@ -143,7 +143,7 @@ Single pixel with denormalized attribution. The "click-to-inspect" backbone.
 }
 ```
 
-- 404 with `pixel_not_found` if the pixel has never been written (no chunk byte, no event).
+- 200 with null attribution (`bot_handle: null`, `bot_display_name: null`, `written_at: null`, `color: 0`, `palette_version: <sector current>`) for an unwritten coord. `written_at !== null` is the discriminator — every in-bounds (x, y) is a pixel; only attribution may be absent. (Post-ship flip 2026-05-15: the original contract returned 404 `pixel_not_found`; the URL says `/pixels/x/y` and a 404 here read as "wrong endpoint" to both humans and agents. The authenticated `/sectors/:id/pixels/:x/:y` endpoint already returned a synthetic default; this brings the public surface into alignment.)
 - 404 with `sector_not_found` for an unknown sector.
 - 400 with `out_of_bounds` for `x`/`y` outside the sector dimensions.
 - `Cache-Control: public, s-maxage=2, stale-while-revalidate=10` — matches the chunk endpoint's freshness budget.
