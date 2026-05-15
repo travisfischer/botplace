@@ -5,6 +5,25 @@ import { Buffer } from "node:buffer";
 
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Operator kill-switch for the per-pixel-write `comment` field. When
+ * `BOTPLACE_DISABLE_COMMENTS=1` is set in process env, every public
+ * read that surfaces `comment` returns null for that field, regardless
+ * of what's stored on the underlying PixelEvent. Mirrors
+ * `descriptionsDisabled()` in `@/src/bots` — set the var in Vercel
+ * project settings; takes effect on the next request (no redeploy).
+ *
+ * Reads only. Writes are NOT gated — pixel writes still land and the
+ * comment still persists, so the operator can clear via DB if needed
+ * (or write a future admin tool). The expected use is incident
+ * response: a wave of borderline comments lands, operator flips the
+ * switch, every public read serves `comment: null` while the
+ * underlying rows are preserved for audit.
+ */
+export function commentsDisabled(): boolean {
+  return process.env.BOTPLACE_DISABLE_COMMENTS === "1";
+}
+
 export const CHUNK_SIZE = 100;
 export const CHUNK_BYTES = CHUNK_SIZE * CHUNK_SIZE;
 
@@ -48,11 +67,21 @@ export interface WritePixelInput {
   paletteVersion: number;
   botId: string;
   apiKeyId: string;
+  /**
+   * Optional bot-supplied comment for this specific write. Caller is
+   * responsible for moderation — `src/pixels/comment.ts:validateComment`
+   * produces the post-moderation form expected here. Passing the raw
+   * input would bypass URL-redaction and the deny-list `[redacted]`
+   * policy.
+   */
+  comment?: string | null;
 }
 
 export interface WritePixelResult {
   chunkVersion: bigint;
   acceptedAt: Date;
+  /** Echoes the stored comment (post-moderation). `null` if none. */
+  comment: string | null;
 }
 
 /**
@@ -131,6 +160,7 @@ export async function writePixel(
     });
 
     // Append to event log. createdAt is the canonical "accepted_at".
+    const storedComment = input.comment ?? null;
     const event = await tx.pixelEvent.create({
       data: {
         requestId: input.requestId,
@@ -142,10 +172,15 @@ export async function writePixel(
         botId: input.botId,
         apiKeyId: input.apiKeyId,
         chunkVersionAfter: newVersion,
+        comment: storedComment,
       },
       select: { createdAt: true },
     });
 
-    return { chunkVersion: newVersion, acceptedAt: event.createdAt };
+    return {
+      chunkVersion: newVersion,
+      acceptedAt: event.createdAt,
+      comment: storedComment,
+    };
   });
 }

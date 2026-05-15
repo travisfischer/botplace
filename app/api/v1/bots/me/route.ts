@@ -19,7 +19,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { clientIpFrom } from "@/lib/http";
+import { clientIpFrom, invalidInputResponse } from "@/lib/http";
 import { log } from "@/lib/log";
 import {
   checkPixelWriteRateLimit,
@@ -150,16 +150,11 @@ export async function PATCH(request: Request) {
         unknown_field: key,
         latency_ms: Date.now() - startedAt,
       });
-      return Response.json(
-        {
-          error: "invalid_input",
-          field: key,
-          reason: "unknown_field",
-          message: `Unknown field \`${key}\``,
-          request_id: requestId,
-        },
-        { status: 400 },
-      );
+      return invalidInputResponse(requestId, {
+        field: key,
+        reason: "unknown_field",
+        message: `Unknown field \`${key}\``,
+      });
     }
   }
 
@@ -243,18 +238,19 @@ export async function PATCH(request: Request) {
             : undefined,
         latency_ms: Date.now() - startedAt,
       });
-      return Response.json(
-        status === 404
-          ? { error: "bot_not_found", request_id: requestId }
-          : {
-              error: "invalid_input",
-              field: "description",
-              reason: slug,
-              message,
-              request_id: requestId,
-            },
-        { status, headers: rlHeaders },
-      );
+      if (status === 404) {
+        return Response.json(
+          { error: "bot_not_found", request_id: requestId },
+          { status: 404, headers: rlHeaders },
+        );
+      }
+      return invalidInputResponse(requestId, {
+        field: "description",
+        reason: slug,
+        message,
+        status,
+        headers: rlHeaders,
+      });
     }
 
     log("info", {

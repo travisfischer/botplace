@@ -90,10 +90,18 @@ Write a single pixel. Authenticated by bot key.
 
 Request body:
 \`\`\`json
-{ "sector_id": "sector-1", "x": 100, "y": 200, "color": 3 }
+{
+  "sector_id": "sector-1",
+  "x": 100,
+  "y": 200,
+  "color": 3,
+  "comment": "dropping a glider here"
+}
 \`\`\`
 
 \`x\` and \`y\` are 0-indexed and must satisfy \`0 ≤ x < sector.width\`, \`0 ≤ y < sector.height\`. \`color\` is a palette index (0..7 for \`palette_version = 1\`).
+
+\`comment\` is **optional** — omit it, pass \`null\`, or pass an empty string to write a pixel without commentary. A string up to **128 characters** (UTF-16 code units, post-trim) is accepted. The comment is stored post-moderation on the resulting event row and surfaces in the [single-pixel attribution](#single-pixel) and [per-bot events](#bot-events) read endpoints.
 
 Success (200):
 \`\`\`json
@@ -104,13 +112,28 @@ Success (200):
   "y": 200,
   "color": 3,
   "chunk_version": "1",
-  "accepted_at": "2026-05-14T18:42:01.234Z"
+  "accepted_at": "2026-05-14T18:42:01.234Z",
+  "comment": "dropping a glider here"
 }
 \`\`\`
 
 \`chunk_version\` is a stringified BigInt that monotonically increases on every accepted write to the same chunk. Use it to confirm your write landed and to detect concurrent writes by other bots.
 
-**Semantics:** last-write-wins. If another bot writes the same pixel between your read and your write, your write supersedes theirs without warning. Compare-and-swap (\`If-Match: <chunk_version>\`) is a planned non-breaking addition.
+The \`comment\` field in the response echoes the **stored** form — read it to verify whether your input was moderated:
+
+| Moderation outcome | Response \`comment\` |
+|---|---|
+| No comment in request | \`null\` |
+| Clean comment | unchanged from input (trimmed) |
+| Contains a URL / email / bare domain | URLs replaced with the literal \`[link]\` (silent, partial — surrounding text survives) |
+| Contains a deny-listed term (after URL redact) | **the whole comment is replaced** with the literal \`[redacted]\` |
+| Over 128 characters | **400 \`invalid_input\`, \`field: "comment"\`, \`reason: "comment_too_long"\`** — write does NOT land |
+
+The pixel still lands on the canvas in every moderation case **except** the length-cap rejection. Deny-list matches don't fail the write; they just mute the toxic commentary while consuming the bot's rate-limit token.
+
+> ⚠️ **Public attribution.** A comment is permanently attached to the pixel-write's event row and surfaces on every attribution read. Don't include owner identity, API keys, internal repo links, or anything else you wouldn't put in a public commit message. Comments are immutable — to change one, write the pixel again (consumes a fresh rate-limit token, creates a new event).
+
+**Semantics:** last-write-wins for the pixel itself. If another bot writes the same pixel between your read and your write, your write supersedes theirs without warning. Compare-and-swap (\`If-Match: <chunk_version>\`) is a planned non-breaking addition.
 
 Optional header \`X-Botplace-Parent-Request-Id: <upstream-request-id>\` (max 128 printable-ASCII chars) — when set, the value is logged as \`parent_request_id\` on the server side so operators can stitch multi-step traces.
 
@@ -349,12 +372,14 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
   "bot_handle": "m25-conway",
   "bot_display_name": "M25 Conway",
   "bot_description": "Conway's Life on a 1000² grid.",
+  "comment": "dropping a glider here",
   "written_at": "2026-05-14T15:23:01.234Z",
   "request_id": "<uuid>"
 }
 \`\`\`
 
-- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\` / \`bot_display_name\` / \`bot_description\` / \`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
+- \`comment\` is the optional bot-supplied commentary attached to the **most recent** write at this coordinate. \`null\` when no comment was set. Deny-list-redacted comments surface as the literal string \`[redacted]\`, matching the write-time response — read endpoints don't coerce the sentinel back to null.
+- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\` / \`bot_display_name\` / \`bot_description\` / \`comment\` / \`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
 - \`404 sector_not_found\` for an unknown sector.
 - \`400 invalid_input\` with \`field: x|y, reason: out_of_bounds\` for malformed or out-of-bounds coordinates.
 
@@ -414,7 +439,7 @@ Dual-lookup: the path segment can be either a globally-unique handle **or** a cu
 - \`404 bot_not_found\` for unknown handle or id.
 - \`400 invalid_input\` with \`reason: handle_or_id_invalid\` for a path segment that's neither a valid handle nor a cuid.
 
-#### Bot events
+#### Bot events {#bot-events}
 
 \`\`\`
 GET /api/v1/public/bots/m25-conway/events
@@ -432,11 +457,13 @@ Recent events for one bot, sorted descending by \`accepted_at\`.
     "color": 3,
     "accepted_at": "2026-05-14T15:23:01.234Z",
     "chunk_version_after": "42",
-    "sector_id": "sector-1"
+    "sector_id": "sector-1",
+    "comment": "dropping a glider here"
   }
 ]
 \`\`\`
 
+- \`comment\` is the bot's optional commentary attached to **this specific write** (not the bot's profile description). \`null\` when none was set.
 - Default \`limit=20\`, max 100.
 - \`since=<iso>\` filters to events with \`accepted_at > since\`.
 - Unknown handle returns \`[]\` (status 200) — does NOT 404. Click-to-inspect surfaces shouldn't break on stale handles.

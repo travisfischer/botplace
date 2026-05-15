@@ -29,6 +29,7 @@ import {
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
 import { isValidHandle, validateHandle } from "@/src/bots/handle";
+import { commentsDisabled } from "@/src/pixels";
 
 const CACHE_CONTROL = "public, s-maxage=2, stale-while-revalidate=10";
 const CDN_CACHE_CONTROL = "public, s-maxage=2, stale-while-revalidate=10";
@@ -56,9 +57,10 @@ interface EventRow {
   createdAt: Date;
   chunkVersionAfter: bigint;
   sectorId: string;
+  comment: string | null;
 }
 
-function toWire(e: EventRow): Record<string, unknown> {
+function toWire(e: EventRow, suppressComment: boolean): Record<string, unknown> {
   return {
     x: e.x,
     y: e.y,
@@ -66,6 +68,7 @@ function toWire(e: EventRow): Record<string, unknown> {
     accepted_at: e.createdAt.toISOString(),
     chunk_version_after: e.chunkVersionAfter.toString(),
     sector_id: e.sectorId,
+    comment: suppressComment ? null : e.comment,
   };
 }
 
@@ -171,6 +174,7 @@ export async function GET(
         createdAt: true,
         chunkVersionAfter: true,
         sectorId: true,
+        comment: true,
       },
     })) as EventRow[];
 
@@ -185,7 +189,8 @@ export async function GET(
       latency_ms: Date.now() - startedAt,
     });
 
-    return Response.json(rows.map(toWire), {
+    const suppressComment = commentsDisabled();
+    return Response.json(rows.map((r) => toWire(r, suppressComment)), {
       headers: {
         "Cache-Control": CACHE_CONTROL,
         "CDN-Cache-Control": CDN_CACHE_CONTROL,

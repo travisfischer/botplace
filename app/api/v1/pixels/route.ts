@@ -11,10 +11,12 @@ import { parseAuthHeader } from "@/src/auth/api-keys";
 import { botKeyAuth } from "@/src/auth/bot-keys";
 import type { AuthFailureReason, LogFields, LogLevel } from "@/lib/log";
 import { log } from "@/lib/log";
+import { BLOCKED_LIST_VERSION } from "@/lib/moderation";
 import { prisma } from "@/lib/prisma";
 import { isValidColorIndex } from "@/src/palettes";
 import { writePixel } from "@/src/pixels";
-import { clientIpFrom } from "@/lib/http";
+import { validateComment } from "@/src/pixels/comment";
+import { clientIpFrom, invalidInputResponse } from "@/lib/http";
 import {
   checkPixelWriteRateLimit,
   pixelWriteRateLimitHeaders,
@@ -262,6 +264,44 @@ export async function POST(request: Request) {
     );
   }
 
+  // Comment moderation. Runs BEFORE rate-limit so a bot can probe the
+  // validator without consuming rate-limit tokens — same shape as the
+  // other input-validation steps above. URL redactions + deny-list
+  // whole-comment swaps don't fail the write; only an over-length
+  // comment does (consistent with all other invalid-input rejections).
+  const commentResult = validateComment(body.comment);
+  if (!commentResult.ok) {
+    lg("warn", {
+      path: PATH,
+      status: 400,
+      error_slug: commentResult.slug,
+      auth_type: "bot_key",
+      bot_id: auth.botId,
+      owner_id: auth.ownerId,
+      sector_id: sectorId,
+      field: "comment",
+      // `length` only defined on the `comment_too_long` arm of the
+      // validator union — guard the spread so we don't emit
+      // `length: undefined` on the `comment_required` (non-string) path.
+      ...(commentResult.slug === "comment_too_long"
+        ? { length: commentResult.length }
+        : {}),
+      denylist_version: BLOCKED_LIST_VERSION,
+      latency_ms: Date.now() - startedAt,
+    });
+    return invalidInputResponse(requestId, {
+      field: "comment",
+      reason: commentResult.slug,
+      message: commentResult.message,
+    });
+  }
+  const {
+    value: storedComment,
+    redactions: commentRedactions,
+    termRedacted: commentTermRedacted,
+    termHash: commentTermHash,
+  } = commentResult;
+
   // Rate limits. Pass the bot's tier so POWER bots get the higher
   // per-bot bucket and skip per-IP entirely (M2.5).
   const ip = clientIpFrom(request);
@@ -323,6 +363,7 @@ export async function POST(request: Request) {
       paletteVersion: sector.paletteVersion,
       botId: auth.botId,
       apiKeyId: auth.apiKeyId,
+      comment: storedComment,
     });
 
     lg("info", {
@@ -333,6 +374,26 @@ export async function POST(request: Request) {
       owner_id: auth.ownerId,
       sector_id: sectorId,
       chunk_version_after: result.chunkVersion.toString(),
+      // Comment moderation audit fields. Omitted entirely when no
+      // comment was set. Field names mirror the description path
+      // (`field`/`length`/`redactions_count`/`denylist_version`/
+      // `denylist_term_hash`) so a single jq filter
+      // `select(.field == "description" or .field == "comment")`
+      // surfaces all moderation lines uniformly. `comment_term_redacted`
+      // is comment-specific (descriptions reject instead of redact, so
+      // no description equivalent).
+      ...(storedComment !== null
+        ? {
+            field: "comment" as const,
+            length: storedComment.length,
+            redactions_count: commentRedactions,
+            comment_term_redacted: commentTermRedacted,
+            denylist_version: BLOCKED_LIST_VERSION,
+            ...(commentTermHash
+              ? { denylist_term_hash: commentTermHash }
+              : {}),
+          }
+        : {}),
       latency_ms: Date.now() - startedAt,
     });
 
@@ -345,6 +406,7 @@ export async function POST(request: Request) {
         color,
         chunk_version: result.chunkVersion.toString(),
         accepted_at: result.acceptedAt.toISOString(),
+        comment: result.comment,
       },
       { headers: pixelWriteRateLimitHeaders(rl.bot, rl.ip) },
     );

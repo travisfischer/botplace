@@ -188,6 +188,14 @@ model PixelEvent {
   apiKeyId          String    @map("api_key_id")          // durable credential audit across rotations
   apiKey            BotApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
   chunkVersionAfter BigInt    @map("chunk_version_after")
+  // Optional bot-supplied commentary attached to this specific pixel
+  // write. Stored post-moderation: URLs silently redacted to `[link]`;
+  // a deny-list match in the URL-redacted form replaces the entire
+  // comment with the literal `[redacted]`. Length cap MAX_COMMENT_LENGTH
+  // enforced at the API boundary (over-length REJECTS the whole write).
+  // Immutable — re-writing the pixel produces a new PixelEvent with its
+  // own comment.
+  comment           String?   @db.Text
   createdAt         DateTime  @default(now()) @map("created_at")
 
   @@index([sectorId, id])                                  // deterministic replay ordering

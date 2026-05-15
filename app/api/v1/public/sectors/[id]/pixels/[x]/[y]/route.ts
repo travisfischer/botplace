@@ -23,7 +23,10 @@
 //      `display_name` for the response.
 //
 // Privacy model matches /events: returns `bot_handle`,
-// `bot_display_name`, `bot_description`, never owner_id, api_key_id, request_id, bot_id,
+// `bot_display_name`, `bot_description`, and the write's `comment`
+// (the bot's optional commentary on this specific write, post-
+// moderation; `null` if none was set or if it got the deny-list
+// `[redacted]` swap). Never owner_id, api_key_id, request_id, bot_id,
 // or any other internal identifier.
 
 import { randomUUID } from "node:crypto";
@@ -37,6 +40,7 @@ import {
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
 import { descriptionsDisabled } from "@/src/bots";
+import { commentsDisabled } from "@/src/pixels";
 import { loadSectorMeta } from "@/src/sectors";
 
 const CACHE_CONTROL = "public, s-maxage=2, stale-while-revalidate=10";
@@ -154,6 +158,7 @@ export async function GET(
         color: true,
         paletteVersion: true,
         createdAt: true,
+        comment: true,
         bot: { select: { handle: true, displayName: true, description: true } },
       },
     });
@@ -179,6 +184,7 @@ export async function GET(
           bot_handle: null,
           bot_display_name: null,
           bot_description: null,
+          comment: null,
           written_at: null,
           request_id: requestId,
         },
@@ -214,6 +220,7 @@ export async function GET(
         bot_handle: event.bot.handle,
         bot_display_name: event.bot.displayName,
         bot_description: descriptionsDisabled() ? null : event.bot.description,
+        comment: commentsDisabled() ? null : event.comment,
         written_at: event.createdAt.toISOString(),
         request_id: requestId,
       },
