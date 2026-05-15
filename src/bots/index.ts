@@ -4,6 +4,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { mintKey } from "@/src/auth/api-keys";
+import { AuditActorKind } from "@/generated/prisma/enums";
 
 // Single source of truth for the rate-tier enum lives in Prisma's
 // generated module. Re-exporting (rather than redeclaring) keeps the
@@ -11,7 +12,7 @@ import { mintKey } from "@/src/auth/api-keys";
 // `lib/rate-limit.ts` keeps its own narrow alias on purpose so it stays
 // import-free of generated code.
 import { BotRateTier } from "@/generated/prisma/enums";
-export { BotRateTier };
+export { BotRateTier, AuditActorKind };
 export type BotStatus = "ACTIVE" | "REVOKED";
 
 /**
@@ -19,12 +20,19 @@ export type BotStatus = "ACTIVE" | "REVOKED";
  * credential lifecycle event (mint, rotate, revoke) writes an
  * `AdminAuditEvent` row inside the same transaction as the mutation, so
  * the audit trail can never drift from reality.
+ *
+ * `actorKind` distinguishes who took the action at audit-query time:
+ * `OWNER` for owner-initiated mutations through the API,
+ * `ADMIN_TOKEN` for ADMIN_TOKEN-bearing requests, `SEED_SCRIPT` for
+ * operator-run provisioning scripts.
  */
 export interface AuditContext {
   requestId: string;
   sourceIp: string;
   /** Who took the action — owner id when present, "admin_token" for the admin route. */
   actor?: string;
+  /** Normalized actor type (added in M3). */
+  actorKind: AuditActorKind;
 }
 
 export interface BotApiKeySummary {
@@ -37,7 +45,10 @@ export interface BotApiKeySummary {
 
 export interface BotSummary {
   id: string;
-  name: string;
+  /** M3: globally-unique slug. Canonical public identifier. */
+  handle: string;
+  /** M3: per-owner-unique freely-editable label. */
+  displayName: string;
   status: BotStatus;
   rateTier: BotRateTier;
   createdAt: Date;
@@ -53,17 +64,74 @@ export interface MintedBotApiKey {
 
 export interface CreateBotResult {
   id: string;
-  name: string;
+  handle: string;
+  displayName: string;
   status: BotStatus;
   rateTier: BotRateTier;
   createdAt: Date;
   apiKey: MintedBotApiKey;
 }
 
+/**
+ * Discriminator for unique-constraint violations on `Bot`. Two indexes
+ * can fire on owner-create:
+ *
+ *   - `handle_taken` — global uniqueness on `handle`.
+ *   - `display_name_taken` — per-owner uniqueness on `(ownerId, displayName)`.
+ *
+ * `null` means the error is a P2002 we don't recognize — caller should
+ * re-throw as a 500 rather than guess.
+ */
+export type BotUniqueConflict = "handle_taken" | "display_name_taken" | null;
+
+/**
+ * Classify a Prisma `P2002` unique-constraint error against the M3
+ * Bot indexes. Returns `null` for non-P2002 errors and for P2002 errors
+ * whose target doesn't match a known bot index — caller maps `null` to
+ * "re-throw as internal_error" so undocumented constraint violations
+ * stay loud.
+ *
+ * Single source of truth for this mapping; route handlers and server
+ * actions both call this helper rather than inspecting `err.meta.target`
+ * inline (the M3 multi-reviewer review's P2.7).
+ */
+export function classifyBotUniqueViolation(err: unknown): BotUniqueConflict {
+  if (typeof err !== "object" || err === null) return null;
+  const code = (err as { code?: unknown }).code;
+  const meta = (err as { meta?: { target?: unknown } }).meta;
+  if (code === "P2002" && meta) {
+    const target = Array.isArray(meta.target)
+      ? meta.target.join(",")
+      : typeof meta.target === "string"
+        ? meta.target
+        : "";
+    if (target.includes("handle")) return "handle_taken";
+    if (target.includes("display_name")) return "display_name_taken";
+  }
+  // Fallback: when Prisma wraps the P2002 (e.g. inside $transaction) the
+  // top-level `code`/`meta` can disappear, but the message text still
+  // carries "Unique constraint failed on the fields: (`<col>`)". Match
+  // on that as a safety net so we never bubble raw Prisma noise to UIs.
+  const message =
+    typeof (err as { message?: unknown }).message === "string"
+      ? (err as { message: string }).message
+      : "";
+  const m = /Unique constraint failed on the fields:\s*\(`?([^`)]+)`?\)/.exec(
+    message,
+  );
+  if (m) {
+    const fields = m[1];
+    if (fields.includes("handle")) return "handle_taken";
+    if (fields.includes("display_name")) return "display_name_taken";
+  }
+  return null;
+}
+
 /** Atomic: create the bot row + mint its first API key in one transaction. */
 export async function createBotForOwner(input: {
   ownerId: string;
-  name: string;
+  handle: string;
+  displayName: string;
   pepper: string;
   auditContext?: AuditContext;
 }): Promise<CreateBotResult> {
@@ -72,10 +140,15 @@ export async function createBotForOwner(input: {
     // here — owner-minted bots are always FREE. Only the operator
     // `pnpm op bot:set-tier` script can elevate (M2.5).
     const bot = await tx.bot.create({
-      data: { ownerId: input.ownerId, name: input.name },
+      data: {
+        ownerId: input.ownerId,
+        handle: input.handle,
+        displayName: input.displayName,
+      },
       select: {
         id: true,
-        name: true,
+        handle: true,
+        displayName: true,
         status: true,
         rateTier: true,
         createdAt: true,
@@ -91,10 +164,13 @@ export async function createBotForOwner(input: {
         data: {
           requestId: input.auditContext.requestId,
           action: "create_bot_with_first_key",
+          actorKind: input.auditContext.actorKind,
           targetId: bot.id,
           payloadJson: {
             owner_id: input.ownerId,
             bot_id: bot.id,
+            bot_handle: bot.handle,
+            bot_display_name: bot.displayName,
             api_key_id: key.id,
             api_key_prefix: minted.prefix,
             actor: input.auditContext.actor ?? null,
@@ -105,7 +181,8 @@ export async function createBotForOwner(input: {
     }
     return {
       id: bot.id,
-      name: bot.name,
+      handle: bot.handle,
+      displayName: bot.displayName,
       status: bot.status,
       rateTier: bot.rateTier,
       createdAt: bot.createdAt,
@@ -127,7 +204,8 @@ export async function listBotsForOwner(
     where: { ownerId },
     select: {
       id: true,
-      name: true,
+      handle: true,
+      displayName: true,
       status: true,
       rateTier: true,
       createdAt: true,
@@ -160,7 +238,7 @@ export async function mintBotApiKey(input: {
     // Ownership check: only mint keys for bots this owner owns.
     const bot = await tx.bot.findFirst({
       where: { id: input.botId, ownerId: input.ownerId },
-      select: { id: true },
+      select: { id: true, handle: true },
     });
     if (!bot) return null;
     const minted = mintKey("bp_live", input.pepper);
@@ -173,10 +251,12 @@ export async function mintBotApiKey(input: {
         data: {
           requestId: input.auditContext.requestId,
           action: "mint_bot_key",
+          actorKind: input.auditContext.actorKind,
           targetId: key.id,
           payloadJson: {
             owner_id: input.ownerId,
             bot_id: bot.id,
+            bot_handle: bot.handle,
             api_key_id: key.id,
             api_key_prefix: minted.prefix,
             actor: input.auditContext.actor ?? null,
@@ -220,6 +300,7 @@ export async function revokeBotApiKey(input: {
         data: {
           requestId: input.auditContext.requestId,
           action: "revoke_bot_key_by_owner",
+          actorKind: input.auditContext.actorKind,
           targetId: input.keyId,
           payloadJson: {
             owner_id: input.ownerId,
@@ -252,7 +333,10 @@ export function botApiKeySummaryToJson(k: BotApiKeySummary) {
 export function botSummaryToJson(b: BotSummary) {
   return {
     id: b.id,
-    name: b.name,
+    // M3 hard-cut: `name` is gone. `handle` is the canonical identifier;
+    // `display_name` is the freely-editable label.
+    handle: b.handle,
+    display_name: b.displayName,
     status: b.status,
     rate_tier: b.rateTier,
     created_at: b.createdAt.toISOString(),
@@ -272,7 +356,8 @@ export function mintedBotApiKeyToJson(k: MintedBotApiKey) {
 export function createBotResultToJson(r: CreateBotResult) {
   return {
     id: r.id,
-    name: r.name,
+    handle: r.handle,
+    display_name: r.displayName,
     status: r.status,
     rate_tier: r.rateTier,
     created_at: r.createdAt.toISOString(),
@@ -323,6 +408,7 @@ export async function rotateBotApiKey(input: {
         data: {
           requestId: input.auditContext.requestId,
           action: "rotate_bot_key",
+          actorKind: input.auditContext.actorKind,
           targetId: key.id,
           payloadJson: {
             owner_id: input.ownerId,

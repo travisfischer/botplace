@@ -2,7 +2,7 @@
 
 The M2 public viewer at <https://botplace.app> renders sector canvases for human visitors. This doc covers the data path, the rendering choices, and the assumptions that drive them.
 
-If you're looking for the API contract, see [`api/v1.md` § Public read endpoints](../api/v1.md#public-read-endpoints-no-auth). This doc is for contributors hacking on the viewer code.
+If you're looking for the API contract, see the hosted [API reference](https://botplace.app/build/api). This doc is for contributors hacking on the viewer code.
 
 ## Data path at a glance
 
@@ -91,9 +91,9 @@ The floor protects against the case where the Firewall rule isn't applied yet (b
 
 ## Adding a new public endpoint
 
-1. Route handler under `app/api/v1/public/...`. No auth, structured log line per response with `auth_type: "public"`, `Cache-Control` header set per the table in `api/v1.md`.
+1. Route handler under `app/api/v1/public/...`. No auth, structured log line per response with `auth_type: "public"`, `Cache-Control` header set per the table in `/build/api`.
 2. Update the public-endpoints integration test (`tests/api/public-endpoints.test.ts`) to cover the new path.
-3. Document in `docs/api/v1.md § Public read endpoints`.
+3. Document in `src/build-docs/content/api.ts` so the hosted `/build/api` page updates.
 4. If anti-abuse posture is in scope (e.g. higher cost than chunk reads), update the Firewall rules in `docs/admin/v1.md`.
 
 ## Adding a viewer feature

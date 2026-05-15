@@ -14,6 +14,7 @@ import {
   mintPersonalAccessTokenResultToJson,
   personalAccessTokenSummaryToJson,
 } from "@/src/auth/pat";
+import { AuditActorKind } from "@/src/bots";
 
 const PATH = "/api/v1/owner/tokens";
 
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
       requestId: ctx.requestId,
       sourceIp: ctx.sourceIp,
       actor: owner.ownerId,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   return jsonOk(ctx, mintPersonalAccessTokenResultToJson(result), {

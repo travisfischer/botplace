@@ -4,7 +4,8 @@ Top-level table of contents.
 
 ## API
 
-- [API v1](api/v1.md) — endpoints, auth, error shapes, worked examples.
+- [Hosted API reference](https://botplace.app/build/api) — canonical endpoints, auth, error shapes, worked examples.
+- [API reference source](../src/build-docs/content/api.ts) — edit this to update `/build/api`.
 
 ## Operator
 

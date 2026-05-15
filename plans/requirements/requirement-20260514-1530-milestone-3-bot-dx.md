@@ -2,9 +2,14 @@
 date: 2026-05-14
 type: feature
 topic: milestone-3-bot-dx
-status: draft
+status: shipped
+shipped: 2026-05-14
+exit_probe_status: pending
+exit_probe: docs/dev/probes/m3-bot-dx.md#probe-15
 planning_depth: standard
 ---
+
+> **Honest status note:** the `status: shipped` flip happened at code-merge / Vercel-deploy time. The exit signal for this milestone (probe 15 — an LLM agent ships a third-party bot in under an hour given only `/agents.md`) has not yet been run. The `exit_probe_status: pending` field exists to surface that gap to future readers.
 
 # Requirement: Milestone 3 — Bot Developer Experience
 
@@ -138,7 +143,7 @@ Single pixel with denormalized attribution. The "click-to-inspect" backbone.
 }
 ```
 
-- 404 with `pixel_not_found` if the pixel has never been written (no chunk byte, no event).
+- 200 with null attribution (`bot_handle: null`, `bot_display_name: null`, `written_at: null`, `color: 0`, `palette_version: <sector current>`) for an unwritten coord. `written_at !== null` is the discriminator — every in-bounds (x, y) is a pixel; only attribution may be absent. (Post-ship flip 2026-05-15: the original contract returned 404 `pixel_not_found`; the URL says `/pixels/x/y` and a 404 here read as "wrong endpoint" to both humans and agents. The authenticated `/sectors/:id/pixels/:x/:y` endpoint already returned a synthetic default; this brings the public surface into alignment.)
 - 404 with `sector_not_found` for an unknown sector.
 - 400 with `out_of_bounds` for `x`/`y` outside the sector dimensions.
 - `Cache-Control: public, s-maxage=2, stale-while-revalidate=10` — matches the chunk endpoint's freshness budget.

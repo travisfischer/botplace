@@ -59,6 +59,10 @@ export function unauthorized(
   extra: LogFields = {},
 ): Response {
   emit("warn", ctx, 401, { error_slug: "unauthorized", ...extra });
+  // Auth-failure responses intentionally OMIT X-Request-Id and the
+  // request_id body field — exposing them on a 401 helps an attacker
+  // correlate probe attempts. Successful responses + non-auth errors
+  // still include it (M3 step 5).
   return Response.json({ error: "unauthorized" }, { status: 401 });
 }
 
@@ -74,7 +78,10 @@ export function jsonError(
     request_id: ctx.requestId,
   };
   if (init.message) body.message = init.message;
-  return Response.json(body, { status });
+  return Response.json(body, {
+    status,
+    headers: { "X-Request-Id": ctx.requestId },
+  });
 }
 
 export function jsonOk<T>(
@@ -84,7 +91,10 @@ export function jsonOk<T>(
 ): Response {
   const status = init.status ?? 200;
   emit("info", ctx, status, init.extra ?? {});
-  return Response.json(body, { status, headers: init.headers });
+  // Merge X-Request-Id into caller-supplied headers without clobbering.
+  const headers = new Headers(init.headers);
+  if (!headers.has("X-Request-Id")) headers.set("X-Request-Id", ctx.requestId);
+  return Response.json(body, { status, headers });
 }
 
 export interface ResolvedOwner {
@@ -197,6 +207,10 @@ export async function applyOwnerWriteRateLimit(
  * covers: missing body, non-object body, non-string `name`, empty after
  * trim, or length > MAX_NAME_LENGTH. Callers report a single
  * invalid_input error covering all those cases.
+ *
+ * Used by `POST /api/v1/owner/tokens` (PAT create — `name` is the only
+ * field). The owner-create-bot path now uses `readJsonBody` directly
+ * since it needs both `handle` and `display_name`.
  */
 export async function readNameBody(request: Request): Promise<string | null> {
   const body = (await request.json().catch(() => null)) as
@@ -207,4 +221,63 @@ export async function readNameBody(request: Request): Promise<string | null> {
   const trimmed = body.name.trim();
   if (trimmed.length === 0 || trimmed.length > MAX_NAME_LENGTH) return null;
   return trimmed;
+}
+
+/**
+ * Read an arbitrary JSON object body. Returns null if the body is
+ * missing, malformed, or not an object. Routes that need multiple
+ * fields (e.g. owner-create-bot) destructure the result themselves
+ * rather than reaching for a special-purpose reader per shape.
+ */
+export async function readJsonBody(
+  request: Request,
+): Promise<Record<string, unknown> | null> {
+  const raw = await request.json().catch(() => null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as Record<string, unknown>;
+}
+
+/**
+ * Per-field `invalid_input` shape introduced in M3. The legacy
+ * `jsonError(ctx, 400, "invalid_input", { message })` shape is still
+ * valid for cases where the failure isn't tied to a specific field
+ * (malformed JSON body, body-not-an-object). When a specific field is
+ * the cause, prefer this helper so machine-readable consumers can
+ * pinpoint the problem.
+ *
+ * Wire shape:
+ *   { error: "invalid_input", field: <name>, reason: <slug>, message: <human>, request_id: <uuid> }
+ */
+export function jsonInvalidInput(
+  ctx: RouteContext,
+  init: {
+    field: string;
+    reason: string;
+    message: string;
+    extra?: LogFields;
+  },
+): Response {
+  log("warn", {
+    request_id: ctx.requestId,
+    path: ctx.path,
+    status: 400,
+    error_slug: "invalid_input",
+    invalid_input_field: init.field,
+    invalid_input_reason: init.reason,
+    latency_ms: Date.now() - ctx.startedAt,
+    ...(init.extra ?? {}),
+  });
+  return Response.json(
+    {
+      error: "invalid_input",
+      field: init.field,
+      reason: init.reason,
+      message: init.message,
+      request_id: ctx.requestId,
+    },
+    {
+      status: 400,
+      headers: { "X-Request-Id": ctx.requestId },
+    },
+  );
 }

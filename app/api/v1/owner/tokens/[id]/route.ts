@@ -5,6 +5,7 @@ import {
 } from "@/lib/route-helpers";
 import { log } from "@/lib/log";
 import { revokePersonalAccessToken } from "@/src/auth/pat";
+import { AuditActorKind } from "@/src/bots";
 
 export async function DELETE(
   request: Request,
@@ -23,6 +24,7 @@ export async function DELETE(
       requestId: ctx.requestId,
       sourceIp: ctx.sourceIp,
       actor: owner.ownerId,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   if (!result.revoked) {

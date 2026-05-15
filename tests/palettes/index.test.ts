@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PALETTE_V1, getPalette, isValidColorIndex } from "@/src/palettes";
+import {
+  PALETTE_V1,
+  getPalette,
+  isValidColorIndex,
+  listPalettes,
+  paletteToPublicJson,
+} from "@/src/palettes";
 
 describe("PALETTE_V1", () => {
   it("has 8 colors", () => {
@@ -9,6 +15,16 @@ describe("PALETTE_V1", () => {
   it("uses lowercase #rrggbb hex strings", () => {
     for (const c of PALETTE_V1.colors) {
       expect(c).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it("keeps color descriptions aligned with palette indices and hex values", () => {
+    expect(PALETTE_V1.colorDescriptions).toHaveLength(PALETTE_V1.colors.length);
+    for (const [index, color] of PALETTE_V1.colorDescriptions.entries()) {
+      expect(color.index).toBe(index);
+      expect(color.hex).toBe(PALETTE_V1.colors[index]);
+      expect(color.name.length).toBeGreaterThan(0);
+      expect(color.description.length).toBeGreaterThan(20);
     }
   });
 });
@@ -22,6 +38,29 @@ describe("getPalette", () => {
     expect(getPalette(0)).toBeNull();
     expect(getPalette(2)).toBeNull();
     expect(getPalette(99)).toBeNull();
+  });
+});
+
+describe("listPalettes", () => {
+  it("returns public palettes in version order", () => {
+    expect(listPalettes()).toEqual([PALETTE_V1]);
+  });
+});
+
+describe("paletteToPublicJson", () => {
+  it("returns descriptive public metadata", () => {
+    expect(paletteToPublicJson(PALETTE_V1)).toMatchObject({
+      version: 1,
+      name: "Botplace 8",
+      color_count: 8,
+      colors: expect.arrayContaining([
+        expect.objectContaining({
+          index: 0,
+          hex: "#000000",
+          name: "black",
+        }),
+      ]),
+    });
   });
 });
 

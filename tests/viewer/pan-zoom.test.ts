@@ -8,6 +8,7 @@ import {
   clampScale,
   defaultTransform,
   normalize,
+  screenToWorld,
   translateBy,
   zoomAround,
 } from "@/src/viewer/pan-zoom";
@@ -86,3 +87,40 @@ describe("normalize", () => {
   });
 });
 
+
+describe("screenToWorld", () => {
+  // Identity transform: scale=1, no translate. Screen pixel == world pixel.
+  it("returns floor(screen) at scale 1, no translate", () => {
+    const t = { tx: 0, ty: 0, scale: 1 };
+    expect(screenToWorld(t, { x: 5, y: 7 }, WORLD)).toEqual({ x: 5, y: 7 });
+    expect(screenToWorld(t, { x: 5.9, y: 7.1 }, WORLD)).toEqual({ x: 5, y: 7 });
+  });
+
+  it("inverts pan", () => {
+    const t = { tx: 100, ty: 50, scale: 1 };
+    // Screen (150, 60) → world (50, 10).
+    expect(screenToWorld(t, { x: 150, y: 60 }, WORLD)).toEqual({ x: 50, y: 10 });
+  });
+
+  it("inverts zoom", () => {
+    const t = { tx: 0, ty: 0, scale: 4 };
+    // Screen (40, 80) at 4x → world (10, 20).
+    expect(screenToWorld(t, { x: 40, y: 80 }, WORLD)).toEqual({ x: 10, y: 20 });
+  });
+
+  it("returns null for out-of-world points", () => {
+    const t = { tx: 0, ty: 0, scale: 1 };
+    expect(screenToWorld(t, { x: -1, y: 0 }, WORLD)).toBeNull();
+    expect(screenToWorld(t, { x: 0, y: -1 }, WORLD)).toBeNull();
+    expect(screenToWorld(t, { x: WORLD.width, y: 0 }, WORLD)).toBeNull();
+    expect(screenToWorld(t, { x: 0, y: WORLD.height }, WORLD)).toBeNull();
+  });
+
+  it("returns null when pan pushes the click into negative world space", () => {
+    // tx > 0: the world has been shifted right on screen, so any
+    // screen click left of tx is in negative world coords.
+    const t = { tx: 50, ty: 0, scale: 1 };
+    // Screen 0 → world (0 - 50) / 1 = -50, out of bounds.
+    expect(screenToWorld(t, { x: 0, y: 0 }, WORLD)).toBeNull();
+  });
+});

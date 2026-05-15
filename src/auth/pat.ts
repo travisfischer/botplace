@@ -45,6 +45,7 @@ export async function mintPersonalAccessToken(
         data: {
           requestId: input.auditContext.requestId,
           action: "mint_pat",
+          actorKind: input.auditContext.actorKind,
           targetId: row.id,
           payloadJson: {
             owner_id: input.ownerId,
@@ -143,6 +144,7 @@ export async function revokePersonalAccessToken(input: {
         data: {
           requestId: input.auditContext.requestId,
           action: "revoke_pat_by_owner",
+          actorKind: input.auditContext.actorKind,
           targetId: input.tokenId,
           payloadJson: {
             owner_id: input.ownerId,

@@ -156,7 +156,7 @@ export interface WritePixelResult {
   serverRequestId?: string;
 }
 
-/** Custom header name for parent-request-id propagation. Documented in `docs/api/v1.md`. */
+/** Custom header name for parent-request-id propagation. Documented in `/build/api`. */
 const PARENT_REQUEST_ID_HEADER = "X-Botplace-Parent-Request-Id";
 
 /**
@@ -237,7 +237,7 @@ export interface PublicEvent {
   color: number;
   accepted_at: string;
   chunk_version_after: string;
-  bot_name: string;
+  bot_handle: string;
 }
 
 export async function fetchEvents(

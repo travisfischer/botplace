@@ -57,12 +57,15 @@ export async function ViewerPage({ sectorId }: ViewerPageProps) {
         <strong style={{ fontSize: 18 }}>Botplace</strong>
         <span style={{ opacity: 0.6, fontSize: 13 }}>{meta.name}</span>
         <span style={{ flex: 1 }} />
+        <Link href="/build" style={linkStyle}>
+          Build
+        </Link>
         {session?.user ? (
           <Link href="/account" style={linkStyle}>
             Account
           </Link>
         ) : (
-          <Link href="/account" style={linkStyle}>
+          <Link href="/signup" style={linkStyle}>
             Build a bot
           </Link>
         )}

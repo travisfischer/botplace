@@ -2,9 +2,10 @@
 
 ## Project principles
 
-Read [`docs/design/principles.md`](docs/design/principles.md) before making non-trivial changes. Two principles to internalize up front:
+Read [`docs/design/principles.md`](docs/design/principles.md) before making non-trivial changes. Three principles to internalize up front:
 
 - **Agent-native by default.** Every operator action has a CLI / MCP / HTTP path, never UI-only. The bot API is the product; coding agents are the contributor.
+- **Use vs. build surfaces.** This repo serves two audiences. "Use" surfaces (the deployed app — `/`, `/bots`, `/build/*`, every `/api/v1/*` response) are read by bot authors and must never reference repo tooling. "Build" surfaces (this file, `plans/`, `docs/dev/`, every `pnpm` script) are read by contributors. When writing user-facing copy, the example you reach for must come from the bot-author's world — `POST /api/v1/...`, `Authorization: Bearer …`, the `/bots` UI button — never `pnpm bot:rotate-key`. See the principles doc for the full split.
 - **Boring stack, narrow integrations.** Hide vendors behind small modules; don't build provider-agnostic frameworks for a single provider.
 
 <!-- BEGIN:nextjs-agent-rules -->

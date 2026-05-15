@@ -15,10 +15,13 @@ import {
   revokePersonalAccessToken,
 } from "@/src/auth/pat";
 import {
+  AuditActorKind,
+  classifyBotUniqueViolation,
   createBotForOwner,
   mintBotApiKey,
   revokeBotApiKey,
 } from "@/src/bots";
+import { validateHandle } from "@/src/bots/handle";
 
 export interface CreateBotState {
   ok: boolean;
@@ -26,7 +29,9 @@ export interface CreateBotState {
   /** Plaintext shown once, on success only. */
   plaintext?: string;
   prefix?: string;
-  botName?: string;
+  /** M3: handle is the canonical identifier shown after create. */
+  handle?: string;
+  displayName?: string;
 }
 
 export interface CreatePatState {
@@ -53,36 +58,57 @@ export async function createBotAction(
   _prev: CreateBotState | null,
   formData: FormData,
 ): Promise<CreateBotState> {
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { ok: false, message: "Name is required" };
-  if (name.length > MAX_NAME_LENGTH) {
+  const handle = String(formData.get("handle") ?? "");
+  const handleErr = validateHandle(handle);
+  if (handleErr) return { ok: false, message: handleErr.message };
+
+  const displayName = String(formData.get("display_name") ?? "").trim();
+  if (!displayName) return { ok: false, message: "Display name is required" };
+  if (displayName.length > MAX_NAME_LENGTH) {
     return {
       ok: false,
-      message: `Name must be ${MAX_NAME_LENGTH} characters or fewer`,
+      message: `Display name must be ${MAX_NAME_LENGTH} characters or fewer`,
     };
   }
+
   try {
     const ownerId = await requireOwnerId();
     const result = await createBotForOwner({
       ownerId,
-      name,
+      handle,
+      displayName,
       pepper: pepperOrDie(),
+      auditContext: {
+        requestId: crypto.randomUUID(),
+        sourceIp: "ui",
+        actor: ownerId,
+        actorKind: AuditActorKind.OWNER,
+      },
     });
     revalidatePath("/bots");
     return {
       ok: true,
       plaintext: result.apiKey.plaintext,
       prefix: result.apiKey.prefix,
-      botName: result.name,
+      handle: result.handle,
+      displayName: result.displayName,
     };
   } catch (err: unknown) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: unknown }).code === "P2002"
-    ) {
-      return { ok: false, message: "You already have a bot with that name" };
+    // Shared classifier in src/bots picks the right per-field error;
+    // null means "P2002 we don't recognize, or a non-Prisma error" →
+    // surface the generic message so we don't pretend we know.
+    const conflict = classifyBotUniqueViolation(err);
+    if (conflict === "handle_taken") {
+      return {
+        ok: false,
+        message: "That handle is already in use. Pick a different one.",
+      };
+    }
+    if (conflict === "display_name_taken") {
+      return {
+        ok: false,
+        message: "You already have a bot with that display name.",
+      };
     }
     return {
       ok: false,
@@ -95,7 +121,17 @@ export async function mintKeyAction(formData: FormData): Promise<void> {
   const ownerId = await requireOwnerId();
   const botId = String(formData.get("botId") ?? "");
   if (!botId) return;
-  await mintBotApiKey({ botId, ownerId, pepper: pepperOrDie() });
+  await mintBotApiKey({
+    botId,
+    ownerId,
+    pepper: pepperOrDie(),
+    auditContext: {
+      requestId: crypto.randomUUID(),
+      sourceIp: "ui",
+      actor: ownerId,
+      actorKind: AuditActorKind.OWNER,
+    },
+  });
   revalidatePath("/bots");
 }
 
@@ -104,7 +140,17 @@ export async function revokeKeyAction(formData: FormData): Promise<void> {
   const keyId = String(formData.get("keyId") ?? "");
   const botId = String(formData.get("botId") ?? "");
   if (!keyId || !botId) return;
-  await revokeBotApiKey({ keyId, botId, ownerId });
+  await revokeBotApiKey({
+    keyId,
+    botId,
+    ownerId,
+    auditContext: {
+      requestId: crypto.randomUUID(),
+      sourceIp: "ui",
+      actor: ownerId,
+      actorKind: AuditActorKind.OWNER,
+    },
+  });
   revalidatePath("/bots");
 }
 
@@ -125,6 +171,12 @@ export async function createPatAction(
     ownerId,
     name,
     pepper: pepperOrDie(),
+    auditContext: {
+      requestId: crypto.randomUUID(),
+      sourceIp: "ui",
+      actor: ownerId,
+      actorKind: AuditActorKind.OWNER,
+    },
   });
   revalidatePath("/bots");
   return {
@@ -139,7 +191,16 @@ export async function revokePatAction(formData: FormData): Promise<void> {
   const ownerId = await requireOwnerId();
   const tokenId = String(formData.get("tokenId") ?? "");
   if (!tokenId) return;
-  await revokePersonalAccessToken({ tokenId, ownerId });
+  await revokePersonalAccessToken({
+    tokenId,
+    ownerId,
+    auditContext: {
+      requestId: crypto.randomUUID(),
+      sourceIp: "ui",
+      actor: ownerId,
+      actorKind: AuditActorKind.OWNER,
+    },
+  });
   revalidatePath("/bots");
 }
 

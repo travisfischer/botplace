@@ -148,7 +148,7 @@ export async function GET(
 
   // ETag = `"<chunk_version>"` per RFC 7232 (must be quoted). Same shape
   // as the public chunk endpoint so bots can use the same If-None-Match
-  // diff strategy as the M2 viewer (see docs/api/v1.md).
+  // diff strategy as the M2 viewer (see /build/api).
   const versionStr = chunk ? chunk.version.toString() : "0";
   const etag = `"${versionStr}"`;
   const ifNoneMatch = request.headers.get("if-none-match");
