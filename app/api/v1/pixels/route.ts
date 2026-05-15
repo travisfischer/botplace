@@ -14,6 +14,7 @@ import { log } from "@/lib/log";
 import { prisma } from "@/lib/prisma";
 import { isValidColorIndex } from "@/src/palettes";
 import { writePixel } from "@/src/pixels";
+import { validateComment } from "@/src/pixels/comment";
 import { clientIpFrom } from "@/lib/http";
 import {
   checkPixelWriteRateLimit,
@@ -262,6 +263,43 @@ export async function POST(request: Request) {
     );
   }
 
+  // Comment moderation. Runs BEFORE rate-limit so a bot can probe the
+  // validator without consuming rate-limit tokens — same shape as the
+  // other input-validation steps above. URL redactions + deny-list
+  // whole-comment swaps don't fail the write; only an over-length
+  // comment does (consistent with all other invalid-input rejections).
+  const commentResult = validateComment(body.comment);
+  if (!commentResult.ok) {
+    lg("warn", {
+      path: PATH,
+      status: 400,
+      error_slug: commentResult.slug,
+      auth_type: "bot_key",
+      bot_id: auth.botId,
+      owner_id: auth.ownerId,
+      sector_id: sectorId,
+      field: "comment",
+      comment_length: commentResult.length,
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json(
+      {
+        error: "invalid_input",
+        field: "comment",
+        reason: commentResult.slug,
+        message: commentResult.message,
+        request_id: requestId,
+      },
+      { status: 400 },
+    );
+  }
+  const {
+    value: storedComment,
+    redactions: commentRedactions,
+    termRedacted: commentTermRedacted,
+    termHash: commentTermHash,
+  } = commentResult;
+
   // Rate limits. Pass the bot's tier so POWER bots get the higher
   // per-bot bucket and skip per-IP entirely (M2.5).
   const ip = clientIpFrom(request);
@@ -323,6 +361,7 @@ export async function POST(request: Request) {
       paletteVersion: sector.paletteVersion,
       botId: auth.botId,
       apiKeyId: auth.apiKeyId,
+      comment: storedComment,
     });
 
     lg("info", {
@@ -333,6 +372,20 @@ export async function POST(request: Request) {
       owner_id: auth.ownerId,
       sector_id: sectorId,
       chunk_version_after: result.chunkVersion.toString(),
+      // Comment audit fields. Omitted entirely when no comment was set.
+      // `denylist_term_hash` surfaces only on the deny-list-redact path;
+      // log readers can correlate the hash to a term locally (see
+      // `docs/dev/probes/bot-descriptions.md` for the resolver one-liner).
+      ...(storedComment !== null
+        ? {
+            comment_length: storedComment.length,
+            comment_redactions_count: commentRedactions,
+            comment_term_redacted: commentTermRedacted,
+            ...(commentTermHash
+              ? { denylist_term_hash: commentTermHash }
+              : {}),
+          }
+        : {}),
       latency_ms: Date.now() - startedAt,
     });
 
@@ -345,6 +398,7 @@ export async function POST(request: Request) {
         color,
         chunk_version: result.chunkVersion.toString(),
         accepted_at: result.acceptedAt.toISOString(),
+        comment: result.comment,
       },
       { headers: pixelWriteRateLimitHeaders(rl.bot, rl.ip) },
     );

@@ -19,3 +19,13 @@ export const MAX_NAME_LENGTH = 64;
  * composition.
  */
 export const MAX_DESCRIPTION_LENGTH = 500;
+
+/**
+ * Maximum length of a per-pixel-write `comment`. UTF-16 code units.
+ * Bots optionally set this on `POST /api/v1/pixels`; surfaces on
+ * single-pixel attribution + per-bot events. Tighter than description
+ * because comments are write-time-only artifacts attached to many
+ * events, not a single bio — one tweet's worth of space, fits in
+ * click-to-inspect UI without scrolling.
+ */
+export const MAX_COMMENT_LENGTH = 128;

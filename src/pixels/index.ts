@@ -48,11 +48,21 @@ export interface WritePixelInput {
   paletteVersion: number;
   botId: string;
   apiKeyId: string;
+  /**
+   * Optional bot-supplied comment for this specific write. Caller is
+   * responsible for moderation — `src/pixels/comment.ts:validateComment`
+   * produces the post-moderation form expected here. Passing the raw
+   * input would bypass URL-redaction and the deny-list `[redacted]`
+   * policy.
+   */
+  comment?: string | null;
 }
 
 export interface WritePixelResult {
   chunkVersion: bigint;
   acceptedAt: Date;
+  /** Echoes the stored comment (post-moderation). `null` if none. */
+  comment: string | null;
 }
 
 /**
@@ -131,6 +141,7 @@ export async function writePixel(
     });
 
     // Append to event log. createdAt is the canonical "accepted_at".
+    const storedComment = input.comment ?? null;
     const event = await tx.pixelEvent.create({
       data: {
         requestId: input.requestId,
@@ -142,10 +153,15 @@ export async function writePixel(
         botId: input.botId,
         apiKeyId: input.apiKeyId,
         chunkVersionAfter: newVersion,
+        comment: storedComment,
       },
       select: { createdAt: true },
     });
 
-    return { chunkVersion: newVersion, acceptedAt: event.createdAt };
+    return {
+      chunkVersion: newVersion,
+      acceptedAt: event.createdAt,
+      comment: storedComment,
+    };
   });
 }

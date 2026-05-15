@@ -56,6 +56,7 @@ interface EventRow {
   createdAt: Date;
   chunkVersionAfter: bigint;
   sectorId: string;
+  comment: string | null;
 }
 
 function toWire(e: EventRow): Record<string, unknown> {
@@ -66,6 +67,7 @@ function toWire(e: EventRow): Record<string, unknown> {
     accepted_at: e.createdAt.toISOString(),
     chunk_version_after: e.chunkVersionAfter.toString(),
     sector_id: e.sectorId,
+    comment: e.comment,
   };
 }
 
@@ -171,6 +173,7 @@ export async function GET(
         createdAt: true,
         chunkVersionAfter: true,
         sectorId: true,
+        comment: true,
       },
     })) as EventRow[];
 
