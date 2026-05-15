@@ -56,8 +56,10 @@ async function seedSector(width = 200, height = 100): Promise<SeedResult> {
       displayName: ownerId,
     },
   });
+  // M3: bots carry a globally-unique `handle` and per-owner `display_name`.
+  const handle = `pubtest-bot-${randomUUID().slice(0, 8)}`;
   await prisma.bot.create({
-    data: { id: botId, ownerId, name: `bot-${randomUUID().slice(0, 4)}` },
+    data: { id: botId, ownerId, handle, displayName: handle },
   });
   const minted = mintKey("bp_live", pepper);
   await prisma.botApiKey.create({

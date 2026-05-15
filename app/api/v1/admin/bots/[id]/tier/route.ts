@@ -94,10 +94,12 @@ export async function PUT(
     return Response.json(
       {
         error: "invalid_input",
+        field: "rate_tier",
+        reason: "rate_tier_invalid",
         message: "`rate_tier` must be FREE or POWER.",
         request_id: requestId,
       },
-      { status: 400 },
+      { status: 400, headers: { "X-Request-Id": requestId } },
     );
   }
 
@@ -107,7 +109,13 @@ export async function PUT(
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.bot.findUnique({
       where: { id: botId },
-      select: { id: true, rateTier: true, name: true, ownerId: true },
+      select: {
+        id: true,
+        rateTier: true,
+        handle: true,
+        displayName: true,
+        ownerId: true,
+      },
     });
     if (!existing) return { found: false } as const;
     const previousTier = existing.rateTier;
@@ -122,11 +130,13 @@ export async function PUT(
       data: {
         requestId,
         action: "set_bot_rate_tier",
+        actorKind: "admin_token",
         targetId: botId,
         payloadJson: {
           before: { rate_tier: previousTier },
           after: { rate_tier: newTier },
-          bot_name: existing.name,
+          bot_handle: existing.handle,
+          bot_display_name: existing.displayName,
           owner_id: existing.ownerId,
           idempotent: noop,
         },
@@ -147,7 +157,7 @@ export async function PUT(
     });
     return Response.json(
       { error: "bot_not_found", request_id: requestId },
-      { status: 404 },
+      { status: 404, headers: { "X-Request-Id": requestId } },
     );
   }
 
@@ -163,11 +173,14 @@ export async function PUT(
     latency_ms: Date.now() - startedAt,
   });
 
-  return Response.json({
-    bot_id: botId,
-    rate_tier: result.newTier,
-    previous_rate_tier: result.previousTier,
-    idempotent: result.noop,
-    request_id: requestId,
-  });
+  return Response.json(
+    {
+      bot_id: botId,
+      rate_tier: result.newTier,
+      previous_rate_tier: result.previousTier,
+      idempotent: result.noop,
+      request_id: requestId,
+    },
+    { headers: { "X-Request-Id": requestId } },
+  );
 }

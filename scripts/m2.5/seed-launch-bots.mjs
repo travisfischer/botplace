@@ -9,7 +9,7 @@
 //   m25-sparkle        — radial halo on the most recent non-self write
 //   m25-conway         — Game of Life on chunk-of-the-minute
 //
-// Idempotent on (owner_id, bot_name). Re-running is safe:
+// Idempotent on bot.handle (globally unique post-M3). Re-running is safe:
 //   - Bot doesn't exist for that owner → create it, mint a key, print
 //     the plaintext API key ONCE.
 //   - Bot already exists → skip silently with "already provisioned"
@@ -68,6 +68,7 @@ if (!DB_URL) {
 const { values } = parseArgs({
   options: {
     "owner-email": { type: "string" },
+    actor: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
   strict: true,
@@ -76,16 +77,20 @@ const { values } = parseArgs({
 
 if (values.help || !values["owner-email"]) {
   console.error(
-    "usage: pnpm m25:seed-launch-bots --owner-email <email>\n" +
+    "usage: pnpm m25:seed-launch-bots --owner-email <email> [--actor <who>]\n" +
       "  (or `pnpm op m25:seed-launch-bots ...` for local dev with op-wrapper)\n" +
       "  Creates m25-visitor-pulse, m25-sparkle, m25-conway under the owner\n" +
       "  with the given email (must already exist in the owners table).\n" +
-      "  Idempotent: skips bots that already exist.",
+      "  Idempotent: skips bots that already exist.\n" +
+      "  --actor <email-or-handle> stamps the audit row with WHO ran the\n" +
+      "    script. Defaults to $USER. Public-repo reproducibility means\n" +
+      "    multiple potential operators eventually — be explicit.",
   );
   process.exit(values.help ? 0 : 2);
 }
 
 const OWNER_EMAIL = values["owner-email"];
+const ACTOR = values.actor ?? process.env.USER ?? "unknown";
 
 // Force sslmode=verify-full to match lib/prisma.ts.
 const url = (() => {
@@ -138,22 +143,29 @@ try {
 
   const results = [];
 
-  for (const name of BOT_NAMES) {
-    // 2a. Check if bot already exists for this owner.
+  for (const handle of BOT_NAMES) {
+    // M3: `handle` is the launch-bot identifier (matches what was the
+    // `name` in M2.5 — the strings already shape correctly). The
+    // human-readable display_name is the same string for these bots.
+    const displayName = handle;
+
+    // 2a. Check if bot already exists for this owner. Look up by handle
+    // (globally unique post-M3) to avoid colliding with any other
+    // owner that may have squatted the display_name.
     const existingRows = await client.query(
-      "SELECT id, rate_tier FROM bots WHERE owner_id = $1 AND name = $2",
-      [owner.id, name],
+      "SELECT id, rate_tier FROM bots WHERE handle = $1",
+      [handle],
     );
     if (existingRows.rowCount > 0) {
       const existing = existingRows.rows[0];
       results.push({
-        bot_name: name,
+        bot_handle: handle,
         bot_id: existing.id,
         rate_tier: existing.rate_tier,
         provisioned: "existed",
       });
       console.error(
-        `  already provisioned: ${name} (id=${existing.id}, tier=${existing.rate_tier})`,
+        `  already provisioned: ${handle} (id=${existing.id}, tier=${existing.rate_tier})`,
       );
       continue;
     }
@@ -166,9 +178,9 @@ try {
     await client.query("BEGIN");
     try {
       await client.query(
-        `INSERT INTO bots (id, owner_id, name, status, rate_tier, created_at)
-         VALUES ($1, $2, $3, 'ACTIVE', 'POWER', now())`,
-        [botId, owner.id, name],
+        `INSERT INTO bots (id, owner_id, handle, display_name, status, rate_tier, created_at)
+         VALUES ($1, $2, $3, $4, 'ACTIVE', 'POWER', now())`,
+        [botId, owner.id, handle, displayName],
       );
       await client.query(
         `INSERT INTO bot_api_keys (id, bot_id, key_hash, prefix, created_at)
@@ -179,18 +191,21 @@ try {
       // operator log surface (same shape as set-bot-tier).
       await client.query(
         `INSERT INTO admin_audit_events
-           (request_id, action, target_id, payload_json, source_ip, created_at)
-         VALUES ($1, $2, $3, $4, $5, now())`,
+           (request_id, action, actor_kind, target_id, payload_json, source_ip, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())`,
         [
           cuid(),
           "set_bot_rate_tier",
+          "seed_script",
           botId,
           JSON.stringify({
             before: { rate_tier: "FREE" },
             after: { rate_tier: "POWER" },
-            bot_name: name,
+            bot_handle: handle,
+            bot_display_name: displayName,
             owner_id: owner.id,
             provisioned_by: "m2.5-seed-launch-bots",
+            invoked_by: ACTOR,
             idempotent: false,
           }),
           "local-script",
@@ -203,7 +218,7 @@ try {
     }
 
     results.push({
-      bot_name: name,
+      bot_handle: handle,
       bot_id: botId,
       api_key_id: keyId,
       api_key: key.plaintext,
@@ -211,7 +226,7 @@ try {
       rate_tier: "POWER",
       provisioned: "created",
     });
-    console.error(`  created: ${name} (id=${botId}, key prefix=${key.prefix})`);
+    console.error(`  created: ${handle} (id=${botId}, key prefix=${key.prefix})`);
   }
 
   console.log(JSON.stringify(results, null, 2));

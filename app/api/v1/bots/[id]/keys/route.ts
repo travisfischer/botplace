@@ -6,7 +6,7 @@ import {
   requirePepper,
   resolveOwner,
 } from "@/lib/route-helpers";
-import { mintBotApiKey, mintedBotApiKeyToJson } from "@/src/bots";
+import { AuditActorKind, mintBotApiKey, mintedBotApiKeyToJson } from "@/src/bots";
 
 export async function POST(
   request: Request,
@@ -32,6 +32,7 @@ export async function POST(
       requestId: ctx.requestId,
       sourceIp: ctx.sourceIp,
       actor: owner.ownerId,
+      actorKind: AuditActorKind.owner,
     },
   });
   if (!result) {

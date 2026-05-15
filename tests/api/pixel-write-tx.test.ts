@@ -47,11 +47,13 @@ describeIfDb("writePixel transaction invariants", () => {
             displayName: ownerId,
           },
         });
+        const handle = `pixtest-${randomUUID().slice(0, 8)}`;
         await prisma.bot.create({
           data: {
             id: botId,
             ownerId,
-            name: `bot-${randomUUID().slice(0, 4)}`,
+            handle,
+            displayName: handle,
           },
         });
         const minted = mintKey("bp_live", pepper);
@@ -156,8 +158,9 @@ describeIfDb("writePixel transaction invariants", () => {
             displayName: ownerId,
           },
         });
+        const handle2 = `pixtest-${randomUUID().slice(0, 8)}`;
         await prisma.bot.create({
-          data: { id: botId, ownerId, name: `bot-${randomUUID().slice(0, 4)}` },
+          data: { id: botId, ownerId, handle: handle2, displayName: handle2 },
         });
         const minted = mintKey("bp_live", pepper);
         await prisma.botApiKey.create({

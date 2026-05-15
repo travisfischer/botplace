@@ -22,10 +22,10 @@ const SELF = "m25-sparkle";
 function ev(
   x: number,
   y: number,
-  bot_name: string,
+  bot_handle: string,
   accepted_at = "2026-05-12T12:00:00.000Z",
 ): SparkleEvent {
-  return { x, y, bot_name, accepted_at };
+  return { x, y, bot_handle, accepted_at };
 }
 
 describe("sparkle-logic", () => {

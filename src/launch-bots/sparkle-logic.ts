@@ -39,7 +39,7 @@ export const SPARKLE_DIRECTIONS: ReadonlyArray<readonly [number, number]> = [
 export interface SparkleEvent {
   x: number;
   y: number;
-  bot_name: string;
+  bot_handle: string;
   accepted_at: string;
 }
 
@@ -53,10 +53,10 @@ export interface SparkleEvent {
  */
 export function pickNonSelfAnchor(
   events: ReadonlyArray<SparkleEvent>,
-  selfBotName: string,
+  selfBotHandle: string,
 ): SparkleEvent | null {
   for (const e of events) {
-    if (e.bot_name !== selfBotName) return e;
+    if (e.bot_handle !== selfBotHandle) return e;
   }
   return null;
 }
@@ -70,13 +70,13 @@ export function pickNonSelfAnchor(
  */
 export function pickRecentNonSelfAnchors(
   events: ReadonlyArray<SparkleEvent>,
-  selfBotName: string,
+  selfBotHandle: string,
   n: number,
 ): SparkleEvent[] {
   const out: SparkleEvent[] = [];
   const seen = new Set<string>();
   for (const e of events) {
-    if (e.bot_name === selfBotName) continue;
+    if (e.bot_handle === selfBotHandle) continue;
     const key = `${e.x},${e.y}`;
     if (seen.has(key)) continue;
     seen.add(key);

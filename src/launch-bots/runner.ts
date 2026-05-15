@@ -237,7 +237,7 @@ export interface PublicEvent {
   color: number;
   accepted_at: string;
   chunk_version_after: string;
-  bot_name: string;
+  bot_handle: string;
 }
 
 export async function fetchEvents(

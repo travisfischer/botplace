@@ -34,6 +34,24 @@ enum BotRateTier {
   POWER
 }
 
+// Normalized actor type on AdminAuditEvent. Distinguishes "a human
+// operator hit the admin endpoint with ADMIN_TOKEN" from "an operator
+// script (seed, provisioning) wrote an audit row directly". Added in
+// M3 to make audit-trail queries by actor type easy without parsing
+// `payload_json`. Backfilled to `admin_token` for pre-M3 rows.
+enum AuditActorKind {
+  // ADMIN_TOKEN-bearing HTTP request to /api/v1/admin/...
+  admin_token
+  // Operator-run mjs/script that talks to the DB directly (seed,
+  // provisioning). The script identifies itself in `payload_json` —
+  // see `pnpm m25:seed-launch-bots --actor <email>` for the M3 shape.
+  seed_script
+  // Owner-initiated mutation through the standard owner API
+  // (POST /api/v1/bots, key mint/rotate/revoke). Added so the audit
+  // trail can distinguish "owner did it" from "operator did it".
+  owner
+}
+
 model Owner {
   id                   String                     @id @default(cuid())
   googleSub            String                     @unique @map("google_sub") // Google OAuth `sub`
@@ -66,23 +84,32 @@ model OwnerPersonalAccessToken {
 }
 
 model Bot {
-  id        String       @id @default(cuid())
-  ownerId   String       @map("owner_id")
+  id          String       @id @default(cuid())
+  ownerId     String       @map("owner_id")
   // Restrict: a bot's PixelEvent rows are append-only audit data; cascading
   // a bot delete would silently truncate the canvas's write history.
-  owner     Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  name      String
-  status    BotStatus    @default(ACTIVE)
+  owner       Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  // Globally-unique slug. Canonical public identifier in API responses,
+  // logs, audit, and cross-owner attribution. Owner picks at create.
+  // Validation lives in `src/bots/handle.ts`; the DB layer enforces only
+  // uniqueness. Persistent — no rename feature in M3.
+  handle      String       @unique
+  // Per-owner-unique label. Permissive validation up to MAX_NAME_LENGTH.
+  // Freely editable. Replaces the M1/M2 `name` column.
+  displayName String       @map("display_name")
+  status      BotStatus    @default(ACTIVE)
   // Rate-limit tier. FREE on every owner-mint; POWER only via
   // `pnpm admin:set-bot-tier`. See enum doc above.
-  rateTier  BotRateTier  @default(FREE) @map("rate_tier")
-  createdAt DateTime     @default(now()) @map("created_at")
-  apiKeys   BotApiKey[]
-  events    PixelEvent[]
+  rateTier    BotRateTier  @default(FREE) @map("rate_tier")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  apiKeys     BotApiKey[]
+  events      PixelEvent[]
 
-  // The unique index serves the (ownerId)-prefix scan via leftmost-prefix
-  // matching; no separate `@@index([ownerId])` needed.
-  @@unique([ownerId, name])
+  // Per-owner uniqueness on the human label keeps the owner's "my bots"
+  // listing readable. The unique index also serves the (ownerId)-prefix
+  // scan via leftmost-prefix matching; no separate `@@index([ownerId])`
+  // needed.
+  @@unique([ownerId, displayName])
   @@map("bots")
 }
 
@@ -159,14 +186,21 @@ model PixelEvent {
 }
 
 model AdminAuditEvent {
-  id          BigInt   @id @default(autoincrement())
-  requestId   String   @map("request_id")
-  action      String                                       // e.g. "revoke_bot_key"
-  targetId    String?  @map("target_id")                   // bot id, key id, etc.
-  payloadJson Json     @map("payload_json")                // before/after snapshot
-  sourceIp    String   @map("source_ip")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id          BigInt         @id @default(autoincrement())
+  requestId   String         @map("request_id")
+  action      String                                              // e.g. "revoke_bot_key"
+  // Normalized actor type. M3 backfills pre-existing rows to
+  // `admin_token` since every prior audit row came through the
+  // ADMIN_TOKEN-gated admin route. New audit rows from owner-initiated
+  // mutations carry `owner`; operator scripts (seed-launch-bots) carry
+  // `seed_script`.
+  actorKind   AuditActorKind @default(admin_token) @map("actor_kind")
+  targetId    String?        @map("target_id")                    // bot id, key id, etc.
+  payloadJson Json           @map("payload_json")                 // before/after snapshot
+  sourceIp    String         @map("source_ip")
+  createdAt   DateTime       @default(now()) @map("created_at")
 
   @@index([action, createdAt])
+  @@index([actorKind, createdAt])
   @@map("admin_audit_events")
 }

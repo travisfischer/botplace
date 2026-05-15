@@ -64,7 +64,10 @@ export async function POST(request: Request) {
       source_ip: clientIpFrom(request),
       latency_ms: Date.now() - startedAt,
     });
-    return Response.json({ error: "not_found" }, { status: 404 });
+    return Response.json(
+      { error: "not_found" },
+      { status: 404 },
+    );
   }
 
   const body = (await request.json().catch(() => null)) as {
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
     });
     return Response.json(
       { error: "invalid_input", request_id: requestId },
-      { status: 400 },
+      { status: 400, headers: { "X-Request-Id": requestId } },
     );
   }
 
@@ -106,6 +109,7 @@ export async function POST(request: Request) {
       data: {
         requestId,
         action: "revoke_bot_key",
+        actorKind: "admin_token",
         targetId: keyId,
         payloadJson: {
           before: {
@@ -139,7 +143,7 @@ export async function POST(request: Request) {
     });
     return Response.json(
       { error: "key_not_found", request_id: requestId },
-      { status: 404 },
+      { status: 404, headers: { "X-Request-Id": requestId } },
     );
   }
 
@@ -152,11 +156,14 @@ export async function POST(request: Request) {
     idempotent: result.alreadyRevoked,
     latency_ms: Date.now() - startedAt,
   });
-  return Response.json({
-    revoked: true,
-    key_id: keyId,
-    revoked_at: result.revokedAt.toISOString(),
-    idempotent: result.alreadyRevoked,
-    request_id: requestId,
-  });
+  return Response.json(
+    {
+      revoked: true,
+      key_id: keyId,
+      revoked_at: result.revokedAt.toISOString(),
+      idempotent: result.alreadyRevoked,
+      request_id: requestId,
+    },
+    { headers: { "X-Request-Id": requestId } },
+  );
 }

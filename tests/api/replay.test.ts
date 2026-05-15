@@ -78,8 +78,9 @@ describeIfDb("event-log replay reconstructs canvas state", () => {
           displayName: ownerId,
         },
       });
+      const handle = `replay-${randomUUID().slice(0, 8)}`;
       await prisma.bot.create({
-        data: { id: botId, ownerId, name: `bot-${randomUUID().slice(0, 4)}` },
+        data: { id: botId, ownerId, handle, displayName: handle },
       });
       const minted = mintKey("bp_live", pepper);
       await prisma.botApiKey.create({

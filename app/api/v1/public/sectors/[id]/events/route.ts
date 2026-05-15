@@ -2,11 +2,14 @@
 // no auth). Used by the M2.5 sparkle bot and any other reactive bot
 // that wants to react to canvas activity.
 //
-// Privacy model: exposes bot_name (already attributable via chunk diffs
-// over time), but never owner_id, api_key_id, request_id, or any
-// internal identifier. bot_id is also omitted in this iteration — if a
-// use case appears for stable machine-readable bot identity, add it
-// then.
+// Privacy model: exposes `bot_handle` (the canonical public identifier
+// post-M3), but never owner_id, api_key_id, request_id, bot_id, or any
+// other internal identifier.
+//
+// M3 hard-cut: previously this endpoint returned `bot_name`. As of M3
+// the field is renamed to `bot_handle`. There is no deprecation window
+// and no compatibility alias — see Q5 in the M3 requirement
+// (plans/requirements/requirement-20260514-1530-milestone-3-bot-dx.md).
 //
 // Two response shapes (chosen by query):
 //
@@ -81,7 +84,7 @@ interface EventRow {
   color: number;
   createdAt: Date;
   chunkVersionAfter: bigint;
-  bot: { name: string };
+  bot: { handle: string };
 }
 
 function toWireEvent(e: EventRow): Record<string, unknown> {
@@ -91,7 +94,8 @@ function toWireEvent(e: EventRow): Record<string, unknown> {
     color: e.color,
     accepted_at: e.createdAt.toISOString(),
     chunk_version_after: e.chunkVersionAfter.toString(),
-    bot_name: e.bot.name,
+    // M3: `bot_handle` replaces `bot_name`. Hard cut.
+    bot_handle: e.bot.handle,
   };
 }
 
@@ -142,7 +146,7 @@ export async function GET(
           color: true,
           createdAt: true,
           chunkVersionAfter: true,
-          bot: { select: { name: true } },
+          bot: { select: { handle: true } },
         },
       })) as EventRow[];
 
@@ -169,6 +173,7 @@ export async function GET(
           headers: {
             "Cache-Control": CACHE_CONTROL,
             "CDN-Cache-Control": CDN_CACHE_CONTROL,
+            "X-Request-Id": requestId,
             ...rlHeaders,
           },
         },
@@ -188,7 +193,7 @@ export async function GET(
         color: true,
         createdAt: true,
         chunkVersionAfter: true,
-        bot: { select: { name: true } },
+        bot: { select: { handle: true } },
       },
     })) as EventRow[];
 
@@ -206,6 +211,7 @@ export async function GET(
       headers: {
         "Cache-Control": CACHE_CONTROL,
         "CDN-Cache-Control": CDN_CACHE_CONTROL,
+        "X-Request-Id": requestId,
         ...rlHeaders,
       },
     });
@@ -223,7 +229,7 @@ export async function GET(
     });
     return Response.json(
       { error: "internal_error", request_id: requestId },
-      { status: 500 },
+      { status: 500, headers: { "X-Request-Id": requestId } },
     );
   }
 }

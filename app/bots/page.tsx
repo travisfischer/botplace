@@ -39,7 +39,11 @@ export default async function BotsPage() {
           <ul>
             {bots.map((b) => (
               <li key={b.id}>
-                <strong>{b.name}</strong> — <code>{b.id}</code> ({b.status})
+                <strong>{b.displayName}</strong>{" "}
+                <code style={{ fontSize: 12, color: "#888" }}>
+                  @{b.handle}
+                </code>{" "}
+                — <code>{b.id}</code> ({b.status}) — tier {b.rateTier}
                 <ul>
                   {b.apiKeys.length === 0 ? (
                     <li>No keys.</li>

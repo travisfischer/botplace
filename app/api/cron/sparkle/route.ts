@@ -3,7 +3,7 @@
 // Sparkle paints a "slow-mo explosion" radiating outward from the last
 // few non-self pixel writes. Each tick:
 //   1. Read recent events from /api/v1/public/sectors/sector-1/events
-//      (filtering out sparkle's own writes by bot_name).
+//      (filtering out sparkle's own writes by bot_handle).
 //   2. Pick up to SPARKLE_ANCHOR_COUNT distinct non-self anchors.
 //   3. For each anchor, pick SPARKLE_DIRS_PER_ANCHOR deterministic
 //      directions and shoot SPARKLE_RING_COUNT rings outward.
@@ -39,7 +39,7 @@ import { RESERVED_TOP_ROWS } from "@/src/launch-bots/conway-logic";
 
 const PATH = "/api/cron/sparkle";
 const SECTOR_ID = "sector-1";
-const SELF_BOT_NAME = "m25-sparkle";
+const SELF_BOT_HANDLE = "m25-sparkle";
 
 export async function GET(request: Request) {
   const startedAt = Date.now();
@@ -60,13 +60,13 @@ export async function GET(request: Request) {
       request_id: requestId,
       path: PATH,
       status: 200,
-      bot_name: SELF_BOT_NAME,
+      bot_handle: SELF_BOT_HANDLE,
       skipped: true,
       reason: "bots_disabled",
       latency_ms: Date.now() - startedAt,
     });
     return Response.json({
-      bot: SELF_BOT_NAME,
+      bot: SELF_BOT_HANDLE,
       skipped: true,
       reason: "bots_disabled",
     });
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
 
     const anchors = pickRecentNonSelfAnchors(
       events,
-      SELF_BOT_NAME,
+      SELF_BOT_HANDLE,
       SPARKLE_ANCHOR_COUNT,
     );
     if (anchors.length === 0) {
@@ -104,13 +104,13 @@ export async function GET(request: Request) {
         request_id: requestId,
         path: PATH,
         status: 200,
-        bot_name: SELF_BOT_NAME,
+        bot_handle: SELF_BOT_HANDLE,
         sparkle_skipped: true,
         reason: "no_non_self_event",
         latency_ms: Date.now() - startedAt,
       });
       return Response.json({
-        bot: SELF_BOT_NAME,
+        bot: SELF_BOT_HANDLE,
         skipped: true,
         reason: "no_non_self_event",
       });
@@ -158,8 +158,8 @@ export async function GET(request: Request) {
       request_id: requestId,
       path: PATH,
       status: 200,
-      bot_name: SELF_BOT_NAME,
-      anchors: anchors.map((a) => ({ x: a.x, y: a.y, author: a.bot_name })),
+      bot_handle: SELF_BOT_HANDLE,
+      anchors: anchors.map((a) => ({ x: a.x, y: a.y, author: a.bot_handle })),
       planned_writes: plan.length,
       rings: SPARKLE_RING_COUNT,
     });
@@ -194,7 +194,7 @@ export async function GET(request: Request) {
       request_id: requestId,
       path: PATH,
       status: 200,
-      bot_name: SELF_BOT_NAME,
+      bot_handle: SELF_BOT_HANDLE,
       pixels_written: written,
       planned_writes: plan.length,
       latency_ms: Date.now() - startedAt,
@@ -205,7 +205,7 @@ export async function GET(request: Request) {
     });
 
     return Response.json({
-      bot: SELF_BOT_NAME,
+      bot: SELF_BOT_HANDLE,
       anchors: anchors.map((a) => ({ x: a.x, y: a.y })),
       pixels_written: written,
       planned_writes: plan.length,

@@ -53,11 +53,19 @@ const url = (() => {
 })();
 
 const args = process.argv.slice(2);
-const botNameArg = args.indexOf("--bot-name");
-const botName =
-  botNameArg >= 0 && args[botNameArg + 1]
-    ? args[botNameArg + 1]
-    : `dev-bot-${randomUUID().slice(0, 6)}`;
+// `--bot-name` accepted as a back-compat alias for `--handle` (the M3
+// canonical flag). New scripts should use `--handle`.
+const handleArg = (() => {
+  const i = args.indexOf("--handle");
+  if (i >= 0 && args[i + 1]) return args[i + 1];
+  const j = args.indexOf("--bot-name");
+  if (j >= 0 && args[j + 1]) return args[j + 1];
+  return null;
+})();
+// Generated handle: lowercase letters + hyphens + 6 hex chars. Matches
+// the M3 handle regex (^[a-z][a-z0-9-]{2,31}$).
+const handle = handleArg ?? `dev-bot-${randomUUID().slice(0, 6).toLowerCase()}`;
+const displayName = handle;
 
 const ownerId = `dev-owner-${randomUUID().slice(0, 8)}`;
 const botId = `dev-bot-${randomUUID().slice(0, 8)}`;
@@ -79,9 +87,9 @@ try {
     [ownerId, `dev-${ownerId}`, `${ownerId}@dev.local`, "Dev Owner"],
   );
   await client.query(
-    `INSERT INTO bots (id, owner_id, name, status, created_at)
-     VALUES ($1, $2, $3, 'ACTIVE', now())`,
-    [botId, ownerId, botName],
+    `INSERT INTO bots (id, owner_id, handle, display_name, status, created_at)
+     VALUES ($1, $2, $3, $4, 'ACTIVE', now())`,
+    [botId, ownerId, handle, displayName],
   );
   await client.query(
     `INSERT INTO bot_api_keys (id, bot_id, key_hash, prefix, created_at)
@@ -95,7 +103,8 @@ try {
       {
         owner_id: ownerId,
         bot_id: botId,
-        bot_name: botName,
+        bot_handle: handle,
+        bot_display_name: displayName,
         key_id: keyId,
         api_key: plaintext,
         api_key_prefix: prefix,
