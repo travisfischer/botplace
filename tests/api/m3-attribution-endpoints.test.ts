@@ -416,6 +416,91 @@ describeIfDb("GET /api/v1/public/bots/:handle/events", () => {
       expect(res.status).toBe(200);
     },
   );
+
+  it(
+    "?before=<iso> filters to events with accepted_at < before (backward pagination)",
+    { timeout: 30_000 },
+    async () => {
+      const s = await seed();
+      try {
+        // Write three events with controlled timing — the second one
+        // becomes our cursor for the backward query.
+        await writeAt(s, 1, 1, 1);
+        await new Promise((r) => setTimeout(r, 20));
+        await writeAt(s, 2, 2, 1);
+        await new Promise((r) => setTimeout(r, 20));
+        await writeAt(s, 3, 3, 1);
+
+        // Pull all three, grab the middle event's accepted_at as the
+        // cursor. Events are returned desc-by-accepted_at, so [0] is
+        // the newest (x=3), [1] middle (x=2), [2] oldest (x=1).
+        const allRes = await getBotEvents(new Request("http://test/"), {
+          params: Promise.resolve({ handle: s.botHandle }),
+        });
+        const all = (await allRes.json()) as Array<{
+          x: number;
+          accepted_at: string;
+        }>;
+        expect(all.map((e) => e.x)).toEqual([3, 2, 1]);
+        const middleCursor = all[1].accepted_at;
+
+        // ?before=<middle cursor> → only the oldest event (x=1).
+        const beforeRes = await getBotEvents(
+          new Request(
+            `http://test/?before=${encodeURIComponent(middleCursor)}`,
+          ),
+          { params: Promise.resolve({ handle: s.botHandle }) },
+        );
+        const before = (await beforeRes.json()) as Array<{ x: number }>;
+        expect(before.map((e) => e.x)).toEqual([1]);
+      } finally {
+        await cleanup(s);
+      }
+    },
+  );
+
+  it(
+    "?before= and ?since= are mutually exclusive (400)",
+    { timeout: 30_000 },
+    async () => {
+      const res = await getBotEvents(
+        new Request(
+          "http://test/?before=2026-05-15T00:00:00Z&since=2026-05-14T00:00:00Z",
+        ),
+        { params: Promise.resolve({ handle: "m25-conway" }) },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body).toMatchObject({
+        error: "invalid_input",
+        field: "before",
+        reason: "before_and_since_exclusive",
+      });
+    },
+  );
+
+  it(
+    "every event row now carries palette_version (new for the profile page's color swatch)",
+    { timeout: 30_000 },
+    async () => {
+      const s = await seed();
+      try {
+        await writeAt(s, 7, 7, 2);
+        const res = await getBotEvents(new Request("http://test/"), {
+          params: Promise.resolve({ handle: s.botHandle }),
+        });
+        const body = (await res.json()) as Array<{
+          color: number;
+          palette_version: number;
+        }>;
+        expect(body[0].palette_version).toBe(1);
+        // Sanity: color stayed.
+        expect(body[0].color).toBe(2);
+      } finally {
+        await cleanup(s);
+      }
+    },
+  );
 });
 
 describeIfDb("GET /api/v1/public/sectors/:id/events (M3 rename)", () => {

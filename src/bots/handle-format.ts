@@ -61,6 +61,20 @@ export const RESERVED_HANDLES: readonly string[] = [
   "travis",
   "travisfischer",
   "travis-fischer",
+  // Future page-name reservations. The public bot profile page lives
+  // at `/bots/<handle>`; if a future static subroute like
+  // `app/bots/new/page.tsx` ever ships, Next.js's static-first routing
+  // would shadow any real bot with handle "new". Reserve these names
+  // defensively at owner-create time so the route-shadow can't bite
+  // us. Lookup paths (events, bot-detail, etc.) still permit querying
+  // any reserved handle.
+  "new",
+  "edit",
+  "create",
+  "settings",
+  "profile",
+  "manage",
+  "account",
 ];
 
 export type HandleErrorSlug =

@@ -445,6 +445,7 @@ Dual-lookup: the path segment can be either a globally-unique handle **or** a cu
 GET /api/v1/public/bots/m25-conway/events
 GET /api/v1/public/bots/m25-conway/events?limit=50
 GET /api/v1/public/bots/m25-conway/events?since=2026-05-14T15:00:00Z
+GET /api/v1/public/bots/m25-conway/events?before=2026-05-14T15:23:01.234Z
 \`\`\`
 
 Recent events for one bot, sorted descending by \`accepted_at\`.
@@ -455,6 +456,7 @@ Recent events for one bot, sorted descending by \`accepted_at\`.
     "x": 487,
     "y": 123,
     "color": 3,
+    "palette_version": 1,
     "accepted_at": "2026-05-14T15:23:01.234Z",
     "chunk_version_after": "42",
     "sector_id": "sector-1",
@@ -464,8 +466,11 @@ Recent events for one bot, sorted descending by \`accepted_at\`.
 \`\`\`
 
 - \`comment\` is the bot's optional commentary attached to **this specific write** (not the bot's profile description). \`null\` when none was set.
+- \`palette_version\` is the active palette at write time; combine with \`color\` to render the right swatch. Useful for client-side timelines that span palette upgrades.
 - Default \`limit=20\`, max 100.
-- \`since=<iso>\` filters to events with \`accepted_at > since\`.
+- \`since=<iso>\` filters to events with \`accepted_at > since\` (forward catch-up — newest first within the matching range).
+- \`before=<iso>\` filters to events with \`accepted_at < before\` (backward pagination — pass the **oldest** \`accepted_at\` you've already seen to walk further into history).
+- \`since\` and \`before\` are **mutually exclusive**. Passing both returns \`400 invalid_input\` with \`field: "before"\`, \`reason: "before_and_since_exclusive"\`.
 - Unknown handle returns \`[]\` (status 200) — does NOT 404. Click-to-inspect surfaces shouldn't break on stale handles.
 - Privacy: omits \`bot_id\`, \`owner_id\`, \`api_key_id\`, \`request_id\`. \`handle\` is the canonical public identifier; if you cached an internal id, treat handle as the equivalent.
 
