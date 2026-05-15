@@ -28,7 +28,7 @@ import {
   publicReadRateLimitHeaders,
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
-import { isValidHandle } from "@/src/bots/handle";
+import { isValidHandle, validateHandle } from "@/src/bots/handle";
 
 const CACHE_CONTROL = "public, s-maxage=2, stale-while-revalidate=10";
 const CDN_CACHE_CONTROL = "public, s-maxage=2, stale-while-revalidate=10";
@@ -90,10 +90,16 @@ export async function GET(
   const rlHeaders = publicReadRateLimitHeaders(rl.publicRead);
 
   // Syntactic handle check — short-circuits before hitting the DB
-  // for obviously-malformed handles. Use the same regex/reserved
-  // module the owner-create path uses, but DON'T enforce protected
-  // prefixes (we want to be able to query `m25-conway`).
-  if (!isValidHandle(handle) && !handle.startsWith("m25-")) {
+  // for obviously-malformed handles. Same regex/reserved module the
+  // owner-create path uses; reserved-name handles are still queryable
+  // (the M2.5 launch bots got there first under their conventional
+  // names — the DB unique index is the source of truth for who owns
+  // a handle, not this validator).
+  const reservedButQueryable = (() => {
+    const err = validateHandle(handle);
+    return err?.slug === "handle_reserved";
+  })();
+  if (!isValidHandle(handle) && !reservedButQueryable) {
     log("warn", {
       request_id: requestId,
       path,

@@ -64,14 +64,14 @@ These are small enough to land in the same PR or an immediate follow-up. None ar
 **Reviewer:** how-we-build/release-and-rollout (F1)
 **Evidence:** Both `prisma/migrations/20260514160000_m3_bot_handle_add/migration.sql` and the [synthesis review](review-20260514-1730-m3-bot-dx.md) claim the migrations are split so an operator can pause and run probe 14 between step 1 and step 2 in production. But `prisma migrate deploy` runs every unapplied migration sequentially in one shot. There's no script, runbook step, or probe-doc instruction explaining how the operator actually achieves the pause.
 
-**Suggested remediation:** Add a "Production rollout" section to `docs/dev/probes/m3-bot-dx.md` with the exact incantation (`prisma migrate deploy --to <migration-name>` or equivalent) for applying step 1 only, the wait for probe 14, then step 2. Without this, R1's mitigation is fictional.
+**Resolution: rejected — out of stage.** Operator (Travis) explicitly directed: migrations always apply automatically in lex order via `prisma migrate deploy` (which `vercel-build` runs). MVP stage; no users; destructive rollouts are acceptable. The two-phase Phase A/B runbook was over-engineered. Removed from the probe doc; the migration files stay split because each represents a discrete schema change moment (clean Prisma history), but they always run together. The R1 mitigation in the requirement was sized for a stage Botplace isn't at yet — re-apply when there are external consumers worth coordinating around.
 
 ### P2.2 — Hard-cut `bot_name` → `bot_handle` rename: "no external consumers" was asserted, not verified
 
 **Reviewer:** how-we-build/release-and-rollout (F2)
 **Evidence:** The pre-1.0-deprecation pattern was sold on "zero external consumers verified." No log-grep query, no Vercel-Firewall-rules audit, no checked artifact captures the verification.
 
-**Suggested remediation:** Either (a) add a one-shot script + log query to `docs/dev/probes/m3-bot-dx.md` that confirms no external IP has hit `/events` and consumed `bot_name` in the last N days, or (b) downgrade the deprecation-pattern claim in the synthesis review to "no INTERNAL consumers verified; external consumers welcome to file an issue." Honesty about what was checked > confident-sounding mitigation.
+**Resolution: rejected — out of stage.** Same operator direction as P2.1: MVP-stage destructive rollouts are accepted. The verification probe (a `vercel logs` query for unknown IPs hitting `/events`) was added briefly and removed. If a `bot_name` consumer exists somewhere and breaks post-deploy, they'll file an issue. Re-apply this verification pattern when external coordination is worth the operator overhead.
 
 ### P2.3 — `AdminAuditEvent.actor_kind` enum values violate `SCREAMING_CASE` convention
 
@@ -137,7 +137,7 @@ Listed compactly. Each came from a single reviewer; none are individually critic
 | P3.11 | how-we-build/quality-first | `src/viewer/pixel-inspect.tsx` (238 lines) has no direct unit tests. Click-outside / Esc / relative-time logic relies on probe 12 manual verification only. |
 | P3.12 | how-we-build/release-and-rollout | Step 2 `DROP COLUMN "name"` acknowledged irreversible; no rollback path (Neon PITR + redeploy at pre-M3 SHA) documented anywhere. |
 | P3.13 | how-we-build/sacred-schema | `handle` column is unbounded `TEXT` while app-code regex caps at 32. No DB-level `CHECK` constraint. Defense in depth. |
-| P3.14 | how-we-build/security-and-privacy | `m25-` handle prefix bypasses `validateHandle` at `app/api/v1/public/bots/[handle]/events/route.ts:96` via a `startsWith` shortcut. Use `validateHandle(handle, { enforceProtectedPrefixes: false })` for consistency. |
+| P3.14 | how-we-build/security-and-privacy | ~~`m25-` handle prefix bypasses `validateHandle` ... Use `validateHandle(handle, { enforceProtectedPrefixes: false })` for consistency.~~ **Resolved by stage correction:** the protected-prefix mechanism was removed entirely (operator direction — `m25-` was an arbitrary naming convention, not a meaningful reservation). The bypass shortcut is gone; the public read path now uses `validateHandle()` directly. |
 | P3.15 | how-we-build/security-and-privacy | Reserved-handle list in `src/bots/handle.ts:41-52` defends only the create path. If two owners predated the reserved-list addition, they'd retain reserved handles. Informational. |
 | P3.16 | core/agent-native | Click-to-inspect button label promises "see recent activity" but destination is raw JSON. Either relabel or render in-place. |
 | P3.17 | core/autonomous-learning | No structured intake channel for third-party bot authors to report doc confusion. R6 mitigation gap. |
@@ -154,7 +154,7 @@ Three patterns showed up in 3+ reviewers each — worth flagging to the next mil
 
 1. ~~**Eval coverage for the LLM-facing artifact is the milestone's biggest unfinished business.** P2.5 + P2.6 + P3.21 are the same fundamental gap from three principle angles. The M3 *deliverable* is `/agents.md`; without an eval, every future edit is unverified. Recommend making "land an automated probe-15-equivalent" the M3.5 P0.~~ **Withdrawn — see P2.5 resolution above.** The proposed eval covers external LLM-agent behavior on our docs, not in-platform behavior. Out of scope; manual Probe 15 is sufficient. P2.6 and P3.21 reduce to "annotate model literals + version pins in snippets" (already done).
 
-2. **Migration claims are stronger than the artifacts that back them.** P2.1 (no operator-pause runbook), P2.2 (no external-consumer verification), P3.6 (status flipped pre-probe), P3.12 (no rollback path), P2.4 (no preflight collision check). Each individually is small; together they suggest the synthesis review oversold rollout discipline.
+2. ~~**Migration claims are stronger than the artifacts that back them.** P2.1 (no operator-pause runbook), P2.2 (no external-consumer verification), P3.6 (status flipped pre-probe), P3.12 (no rollback path), P2.4 (no preflight collision check). Each individually is small; together they suggest the synthesis review oversold rollout discipline.~~ **Resolved by stage correction:** P2.1 + P2.2 + P3.12 are rejected as out-of-stage (MVP, no users, destructive rollouts fine — see P2.1/P2.2 resolutions). The original synthesis was applying late-stage rigor to an MVP-stage product. P2.4 (preflight collision check) is the one item from this cluster that's already done — it's defensive even at MVP stage because it produces a clear error message instead of a half-applied schema.
 
 3. **CLI surface wasn't audited for the schema break.** The P1 (`bot:create`) is the loud one; P3.5 (`seed-bot.mjs --bot-name` example) is the quiet adjacent. Suggest a follow-up sweep of `docs/api/v1.md` for stale `pnpm bot:*` examples post-merge.
 
@@ -177,10 +177,10 @@ Three patterns showed up in 3+ reviewers each — worth flagging to the next mil
 
 **Land in this PR if budget allows, otherwise immediate follow-up:**
 
-- [ ] **P2.1:** Production rollout runbook in `docs/dev/probes/m3-bot-dx.md` for the migration-pause pattern.
-- [ ] **P2.4:** Preflight collision check in migration step 1.
-- [ ] **P2.7:** Move P2002 classification into `src/bots/index.ts`.
-- [ ] **P3.5, P3.6:** doc nits.
+- [x] ~~**P2.1:** Production rollout runbook in `docs/dev/probes/m3-bot-dx.md` for the migration-pause pattern.~~ **Rejected — out of stage; see P2.1 resolution.**
+- [x] **P2.4:** Preflight collision check in migration step 1. *(Done in this PR.)*
+- [x] **P2.7:** Move P2002 classification into `src/bots/index.ts`. *(Done in this PR.)*
+- [x] **P3.5, P3.6:** doc nits. *(Done in this PR.)*
 
 **Defer to M3.5 / M4 prereq:**
 

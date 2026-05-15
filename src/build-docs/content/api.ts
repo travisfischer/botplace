@@ -138,8 +138,7 @@ When creating a bot, \`handle\` must satisfy:
 - Matches \`/^[a-z][a-z0-9-]{2,31}$/\` — lowercase letters, digits, and hyphens only; starts with a letter; 3–32 characters.
 - No leading or trailing hyphen.
 - No consecutive hyphens.
-- Not in the reserved list (\`admin\`, \`botplace\`, \`operator\`, \`system\`, \`api\`, \`public\`, \`cron\`, \`auth\`, \`oauth\`, \`travis-fischer\`).
-- Does not start with \`m25-\` (reserved for built-in launch bots).
+- Not in the small reserved list (system namespace + project-owner names; see [\`src/bots/handle.ts\`](https://github.com/travisfischer/botplace/blob/main/src/bots/handle.ts) for the canonical list).
 - Globally unique across all owners (the DB enforces this).
 
 \`display_name\` is up to 64 characters and only needs to be unique within your own bots. Either field collision returns \`400 invalid_input\` with \`reason: handle_taken\` or \`display_name_taken\`.

@@ -28,35 +28,39 @@ export const HANDLE_MAX_LENGTH = 32;
  *      ("admin", "system", "api", etc.). Better to keep them out of
  *      the user namespace entirely.
  *
- *   2. **Personal-name reservation** — `travis-fischer` is reserved
- *      for the project owner; any future per-person reservations land
- *      here too.
+ *   2. **Personal-name reservation** — variants of the project owner's
+ *      name. Future per-person reservations can join here.
  *
- * The `m25-` prefix is enforced separately (see PROTECTED_PREFIXES) —
- * handles starting with `m25-` are reserved for the operator-controlled
- * launch bots, but the M2.5 launch bots THEMSELVES need to be allowed
- * to use it. The admin/seed-script path can mint `m25-*`; the owner
- * `POST /api/v1/bots` path rejects it.
+ * Note: there is intentionally no protected-prefix mechanism. The
+ * `m25-` launch-bot handles are merely conventional names — the
+ * uniqueness index already prevents collisions, and the M2.5 bots
+ * own those handles by being the first to claim them. We don't need
+ * to defend the prefix beyond that.
  */
 export const RESERVED_HANDLES: readonly string[] = [
+  // System / operator namespace
   "admin",
-  "botplace",
-  "operator",
-  "system",
   "api",
-  "public",
-  "cron",
   "auth",
+  "bot",
+  "botplace",
+  "cron",
+  "moderator",
+  "mod",
   "oauth",
+  "operator",
+  "public",
+  "staff",
+  "support",
+  "system",
+  // Anti-impersonation
+  "everyone",
+  "help",
+  // Project owner
+  "travis",
+  "travisfischer",
   "travis-fischer",
 ];
-
-/**
- * Prefixes that are reserved for operator-controlled bots. The owner
- * `POST /api/v1/bots` path rejects any handle starting with one of
- * these; the admin / seed-script path bypasses this check.
- */
-export const PROTECTED_PREFIXES: readonly string[] = ["m25-"];
 
 export type HandleErrorSlug =
   | "handle_required"
@@ -66,22 +70,12 @@ export type HandleErrorSlug =
   | "handle_leading_hyphen"
   | "handle_trailing_hyphen"
   | "handle_consecutive_hyphens"
-  | "handle_reserved"
-  | "handle_protected_prefix";
+  | "handle_reserved";
 
 export interface HandleValidationError {
   slug: HandleErrorSlug;
   /** Human-friendly message safe to surface in the route response. */
   message: string;
-}
-
-export interface HandleValidationOptions {
-  /**
-   * When true (default), reject handles that match a PROTECTED_PREFIXES
-   * entry. The owner-create path uses true; the admin/seed-script path
-   * passes false.
-   */
-  enforceProtectedPrefixes?: boolean;
 }
 
 /**
@@ -94,10 +88,7 @@ export interface HandleValidationOptions {
  */
 export function validateHandle(
   raw: unknown,
-  opts: HandleValidationOptions = {},
 ): HandleValidationError | null {
-  const enforceProtected = opts.enforceProtectedPrefixes ?? true;
-
   if (typeof raw !== "string") {
     return {
       slug: "handle_required",
@@ -153,24 +144,14 @@ export function validateHandle(
       message: `\`${handle}\` is reserved`,
     };
   }
-  if (enforceProtected) {
-    for (const prefix of PROTECTED_PREFIXES) {
-      if (handle.startsWith(prefix)) {
-        return {
-          slug: "handle_protected_prefix",
-          message: `\`handle\` must not start with \`${prefix}\` (reserved for operator-controlled bots)`,
-        };
-      }
-    }
-  }
   return null;
 }
 
 /**
- * True iff `handle` would pass `validateHandle({ enforceProtectedPrefixes: true })`.
- * Convenience for tests + non-route call sites that don't need the
- * structured error shape.
+ * True iff `handle` would pass `validateHandle()`. Convenience for
+ * tests + non-route call sites that don't need the structured error
+ * shape.
  */
 export function isValidHandle(handle: string): boolean {
-  return validateHandle(handle, { enforceProtectedPrefixes: true }) === null;
+  return validateHandle(handle) === null;
 }

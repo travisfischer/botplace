@@ -38,9 +38,9 @@ export async function POST(request: Request) {
     });
   }
 
-  // Handle: validate via the M3 module. Owner-create path enforces the
-  // protected-prefix rule (rejects `m25-*` and any future operator
-  // prefixes). The handle field is required.
+  // Handle: validate via the M3 module. Same regex + reserved list as
+  // every other call site; the DB unique index is the source of truth
+  // for global uniqueness.
   const handleErr = validateHandle(body.handle);
   if (handleErr) {
     return jsonInvalidInput(ctx, {

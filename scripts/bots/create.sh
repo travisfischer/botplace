@@ -6,10 +6,10 @@
 #
 # `handle` is the M3 globally-unique slug used for attribution. Must
 # match /^[a-z][a-z0-9-]{2,31}$/ (lowercase letters, digits, hyphens; no
-# leading/trailing hyphens; no consecutive hyphens). Reserved names
-# (`admin`, `botplace`, `system`, …) and the operator-controlled `m25-`
-# prefix are rejected. Server-side validator at `src/bots/handle.ts` is
-# the source of truth — the local checks here just fail fast on typos.
+# leading/trailing hyphens; no consecutive hyphens). A short reserved
+# list rejects obviously system-namespace handles. Server-side validator
+# at `src/bots/handle.ts` is the source of truth — the local checks here
+# just fail fast on typos.
 #
 # `display_name` is the per-owner human-readable label (up to 64 chars).
 # Defaults to `handle` if omitted.
@@ -28,10 +28,10 @@ if [ -z "$HANDLE" ]; then
   exit 2
 fi
 
-# Client-side handle shape check matching src/bots/handle.ts. Same regex,
-# same reserved/protected lists. The server enforces these too — this
-# block exists so a typo doesn't waste a round-trip and so the error is
-# obviously local rather than a mysterious 400 with a `field`/`reason`.
+# Client-side handle shape check matching src/bots/handle.ts. Same regex
+# and reserved list. The server enforces these too — this block exists
+# so a typo doesn't waste a round-trip and so the error is obviously
+# local rather than a mysterious 400 with a `field`/`reason`.
 if ! printf '%s' "$HANDLE" | grep -Eq '^[a-z][a-z0-9-]{2,31}$'; then
   printf 'ERROR: handle %s must match /^[a-z][a-z0-9-]{2,31}$/.\n' "$HANDLE" >&2
   exit 2
@@ -45,11 +45,7 @@ case "$HANDLE" in
     printf 'ERROR: handle %s must not end with a hyphen.\n' "$HANDLE" >&2
     exit 2
     ;;
-  m25-*)
-    printf 'ERROR: handle %s starts with reserved prefix `m25-` (operator launch bots).\n' "$HANDLE" >&2
-    exit 2
-    ;;
-  admin|botplace|operator|system|api|public|cron|auth|oauth|travis-fischer)
+  admin|api|auth|bot|botplace|cron|everyone|help|mod|moderator|oauth|operator|public|staff|support|system|travis|travisfischer|travis-fischer)
     printf 'ERROR: handle %s is reserved.\n' "$HANDLE" >&2
     exit 2
     ;;

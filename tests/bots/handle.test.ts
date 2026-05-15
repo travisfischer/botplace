@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   HANDLE_MAX_LENGTH,
   HANDLE_MIN_LENGTH,
-  PROTECTED_PREFIXES,
   RESERVED_HANDLES,
   isValidHandle,
   validateHandle,
@@ -60,28 +59,26 @@ describe("validateHandle", () => {
       expect(isValidHandle("abc-def-ghi")).toBe(true);
       expect(isValidHandle("a1b2c3")).toBe(true);
     });
+
+    it("accepts arbitrary handles including m25-* (no prefix protection)", () => {
+      // The protected-prefix mechanism was removed — `m25-` is just a
+      // naming convention for the launch bots, not a system reservation.
+      // The DB unique index already prevents collisions with the
+      // already-claimed M2.5 handles.
+      expect(isValidHandle("m25-fake-conway")).toBe(true);
+      expect(isValidHandle("m25-foo")).toBe(true);
+    });
   });
 
   describe("reserved", () => {
     it.each(RESERVED_HANDLES)("rejects %s", (handle) => {
       expect(validateHandle(handle)?.slug).toBe("handle_reserved");
     });
-  });
 
-  describe("protected prefixes", () => {
-    it.each(PROTECTED_PREFIXES)(
-      "rejects %s* by default",
-      (prefix) => {
-        expect(validateHandle(`${prefix}foo`)?.slug).toBe(
-          "handle_protected_prefix",
-        );
-      },
-    );
-
-    it("allows m25-* when enforceProtectedPrefixes=false (admin/seed path)", () => {
-      expect(
-        validateHandle("m25-conway", { enforceProtectedPrefixes: false }),
-      ).toBeNull();
+    it("includes anti-impersonation entries (travis, travisfischer)", () => {
+      expect(RESERVED_HANDLES).toContain("travis");
+      expect(RESERVED_HANDLES).toContain("travisfischer");
+      expect(RESERVED_HANDLES).toContain("travis-fischer");
     });
   });
 });

@@ -380,18 +380,33 @@ describeIfDb("GET /api/v1/public/bots/:handle/events", () => {
   );
 
   it(
-    "permits m25-* handles for query (protected-prefix exemption)",
+    "permits launch-bot-style handles (m25-*) for query",
     { timeout: 30_000 },
     async () => {
-      // The m25-* prefix is reserved for owner-create rejection, but
-      // the public bot-events endpoint must allow querying them so
-      // the canvas can attribute pixels to launch bots.
+      // No protected-prefix mechanism — `m25-` is just a naming
+      // convention for the M2.5 launch bots. The handle validator
+      // accepts it; the DB unique index decides who actually owns
+      // each handle.
       const res = await getBotEvents(new Request("http://test/"), {
         params: Promise.resolve({ handle: "m25-conway" }),
       });
       // Either 200 with [] (not seeded in this test DB) or 200 with
       // the real bot's events. Both are acceptable — the assertion is
       // that we don't bounce with 400.
+      expect(res.status).toBe(200);
+    },
+  );
+
+  it(
+    "permits reserved handles for query",
+    { timeout: 30_000 },
+    async () => {
+      // Reserved-handle protection only applies to owner-create. The
+      // read path must be able to query any handle the DB might hold,
+      // including any historical claims on a now-reserved name.
+      const res = await getBotEvents(new Request("http://test/"), {
+        params: Promise.resolve({ handle: "admin" }),
+      });
       expect(res.status).toBe(200);
     },
   );
