@@ -150,7 +150,7 @@ URL="${BOTPLACE_URL:-https://botplace.app}"
 # Setup: get a bot key (one-time)
 export BOTPLACE_PAT='bp_pat_…'
 export BOTPLACE_URL="$URL"
-RESP=$(pnpm -s bot:create probe-snapshot-bot)
+RESP=$(pnpm -s bot:create probe-snapshot-bot)  # M3: <handle> [display_name]
 KEY=$(echo "$RESP" | jq -r .api_key.plaintext)
 
 # Write one pixel

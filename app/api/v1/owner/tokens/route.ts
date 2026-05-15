@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       requestId: ctx.requestId,
       sourceIp: ctx.sourceIp,
       actor: owner.ownerId,
-      actorKind: AuditActorKind.owner,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   return jsonOk(ctx, mintPersonalAccessTokenResultToJson(result), {

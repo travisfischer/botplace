@@ -11,7 +11,8 @@
 //
 // Usage:
 //   pnpm dev:seed-bot                     creates dev-owner-* / dev-bot-*
-//   pnpm dev:seed-bot --bot-name foo      same but with a specific bot name
+//   pnpm dev:seed-bot --handle foo        same but with a specific handle
+//   pnpm dev:seed-bot --bot-name foo      back-compat alias for --handle
 //
 // Output: JSON to stdout with bot_id, key_id, plaintext API key. The
 // key is shown ONCE. Save it to a shell var, then use curl to write

@@ -22,8 +22,8 @@ export type BotStatus = "ACTIVE" | "REVOKED";
  * the audit trail can never drift from reality.
  *
  * `actorKind` distinguishes who took the action at audit-query time:
- * `owner` for owner-initiated mutations through the API,
- * `admin_token` for ADMIN_TOKEN-bearing requests, `seed_script` for
+ * `OWNER` for owner-initiated mutations through the API,
+ * `ADMIN_TOKEN` for ADMIN_TOKEN-bearing requests, `SEED_SCRIPT` for
  * operator-run provisioning scripts.
  */
 export interface AuditContext {
@@ -70,6 +70,50 @@ export interface CreateBotResult {
   rateTier: BotRateTier;
   createdAt: Date;
   apiKey: MintedBotApiKey;
+}
+
+/**
+ * Discriminator for unique-constraint violations on `Bot`. Two indexes
+ * can fire on owner-create:
+ *
+ *   - `handle_taken` — global uniqueness on `handle`.
+ *   - `display_name_taken` — per-owner uniqueness on `(ownerId, displayName)`.
+ *
+ * `null` means the error is a P2002 we don't recognize — caller should
+ * re-throw as a 500 rather than guess.
+ */
+export type BotUniqueConflict = "handle_taken" | "display_name_taken" | null;
+
+/**
+ * Classify a Prisma `P2002` unique-constraint error against the M3
+ * Bot indexes. Returns `null` for non-P2002 errors and for P2002 errors
+ * whose target doesn't match a known bot index — caller maps `null` to
+ * "re-throw as internal_error" so undocumented constraint violations
+ * stay loud.
+ *
+ * Single source of truth for this mapping; route handlers and server
+ * actions both call this helper rather than inspecting `err.meta.target`
+ * inline (the M3 multi-reviewer review's P2.7).
+ */
+export function classifyBotUniqueViolation(err: unknown): BotUniqueConflict {
+  if (
+    typeof err !== "object" ||
+    err === null ||
+    !("code" in err) ||
+    (err as { code: unknown }).code !== "P2002"
+  ) {
+    return null;
+  }
+  const meta = (err as { meta?: { target?: unknown } }).meta;
+  if (!meta) return null;
+  const target = Array.isArray(meta.target)
+    ? meta.target.join(",")
+    : typeof meta.target === "string"
+      ? meta.target
+      : "";
+  if (target.includes("handle")) return "handle_taken";
+  if (target.includes("display_name")) return "display_name_taken";
+  return null;
 }
 
 /** Atomic: create the bot row + mint its first API key in one transaction. */

@@ -10,20 +10,39 @@
 -- columns are populated correctly. This split exists so an operator
 -- can pause between migrations in production (per requirement R1).
 
+-- Preflight: refuse to migrate if any two bots share a name across
+-- owners. The legacy `name` column is per-owner unique (`bots_owner_id_name_key`),
+-- but the new `handle` column is GLOBAL unique. A naive backfill would
+-- silently fail at the `bots_handle_key` step below, leaving the
+-- schema half-migrated. Detect collisions FIRST so the operator gets
+-- a clear actionable error instead of debugging a half-applied state.
+--
+-- In production as of M3 planning only the three M25 launch bots
+-- exist, so this should be a no-op. The block is defense-in-depth
+-- for any future redeploy against a populated dev/staging branch.
+DO $$
+DECLARE
+  collisions INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO collisions FROM (
+    SELECT name FROM "bots" GROUP BY name HAVING COUNT(*) > 1
+  ) AS dupes;
+  IF collisions > 0 THEN
+    RAISE EXCEPTION
+      'M3 handle migration aborted: % bot name(s) collide across owners. '
+      'Resolve manually before re-running. '
+      'List with: SELECT name, array_agg(id) FROM bots GROUP BY name HAVING COUNT(*) > 1;',
+      collisions;
+  END IF;
+END $$;
+
 -- Add nullable so the backfill below doesn't violate NOT NULL.
 ALTER TABLE "bots" ADD COLUMN "handle" TEXT;
 ALTER TABLE "bots" ADD COLUMN "display_name" TEXT;
 
--- Backfill: copy `name` into both new columns. Two cases:
---   1. M2.5 launch bots ("m25-conway", "m25-sparkle", "m25-visitor-pulse")
---      already match the handle regex. Direct copy is safe.
---   2. Any other dev/test bots — their existing `name` is per-owner
---      unique, but the new `handle` is GLOBAL unique. If two owners
---      already happen to share a name, the unique index below will
---      fail and the migration aborts. The operator then resolves the
---      collision by hand (rename one bot via UPDATE) and re-runs.
---      In production, only the three M25 launch bots exist as of M3
---      planning, so this case shouldn't fire.
+-- Backfill: copy `name` into both new columns. The preflight above
+-- guarantees no global-uniqueness collision will fire on the
+-- bots_handle_key index added below.
 UPDATE "bots" SET "handle" = "name", "display_name" = "name" WHERE "handle" IS NULL;
 
 -- Now NOT NULL.

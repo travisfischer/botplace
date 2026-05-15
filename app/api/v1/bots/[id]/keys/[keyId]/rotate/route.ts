@@ -40,7 +40,7 @@ export async function POST(
       requestId: ctx.requestId,
       sourceIp: ctx.sourceIp,
       actor: owner.ownerId,
-      actorKind: AuditActorKind.owner,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   if (!result) {

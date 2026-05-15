@@ -49,6 +49,129 @@ You'll also need:
 
 ---
 
+## Pre-deploy probe: verify zero external `bot_name` consumers
+
+The M3 `/events` rename (`bot_name` → `bot_handle`) is a hard cut with
+no compatibility alias. The requirement Q5 claim is that no external
+consumer reads `bot_name` today. This probe verifies that empirically
+against production logs **before** the deploy that ships the rename.
+
+Run from the operator workstation against the live Vercel logs:
+
+```bash
+# Last 24h of /events traffic. Look for any non-Vercel egress IP
+# that hit the endpoint — these are candidate external consumers
+# that may have parsed `bot_name`. Vercel Cron + Botplace own egress
+# show up with documented IP ranges; everything else is "third-party
+# scraper / app / agent" and may have a `bot_name`-shaped client.
+vercel logs --output=json --since=24h \
+  --search='/api/v1/public/sectors/sector-1/events' \
+  | jq -r '. | select(.path | test("/events$")) | "\(.source_ip)\t\(.path)"' \
+  | sort -u
+```
+
+What to do with the output:
+
+- **Empty / only known internal IPs:** rename is safe to ship as a
+  hard cut. Proceed with the rollout sequence below.
+- **Unknown IPs present:** check whether they correspond to any known
+  contributor or experimental bot. If they're truly third-party, the
+  Q5 claim downgrades to "external consumers exist; coordinate with
+  them before shipping." Options: (a) delay and reach out, (b) keep
+  the rename + add a temporary `bot_name` alias on the response, or
+  (c) ship and rely on the consumer's bug report.
+
+This probe is the artifact behind the requirement R1+Q5 confidence.
+Without running it, the "established pre-1.0 deprecation pattern"
+claim is asserted, not verified.
+
+## Production rollout sequence
+
+The M3 schema migrations are **split into four files** so an operator
+can pause between the irreversible drop and the previous step:
+
+| # | Migration | Reversible? | Risk |
+|---|---|---|---|
+| 1 | `20260514160000_m3_bot_handle_add` | Yes (drop the new columns + indexes) | Preflight `RAISE EXCEPTION` aborts on cross-owner name collision |
+| 2 | `20260514160100_m3_drop_bot_name` | **No — drops `bots.name`** | Downstream readers that still expect `name` break |
+| 3 | `20260514160200_m3_audit_actor_kind` | Yes (drop column + enum) | None |
+| 4 | `20260514180000_m3_audit_actor_kind_screaming_case` | Yes (RENAME VALUE back) | None |
+
+Default behavior of `vercel-build` runs `prisma migrate deploy`, which
+applies all four in one shot. To pause between #1 and #2 — required by
+R1 mitigation if you have any uncertainty about the launch-bot
+backfill — gate the deploy in two phases:
+
+### Phase A — schema add + actor_kind, NO drop yet
+
+Apply migrations 1, 3, 4 (additive + rename-only); skip 2 (the drop).
+
+```bash
+# Pull production env to a one-shot file. The pull only includes
+# non-sensitive vars — `KV_REST_API_TOKEN` and `BOTPLACE_API_KEY_PEPPER`
+# need to come from their respective sources of truth (Vercel
+# dashboard for the Upstash token; 1Password for the pepper).
+vercel env pull --environment=production /tmp/prod-env
+set -a; source /tmp/prod-env; set +a
+
+# Apply by name, NOT bulk. --to lands every migration up to and
+# including the named one.
+pnpm exec prisma migrate deploy --to 20260514160000_m3_bot_handle_add
+pnpm exec prisma migrate deploy --to 20260514160200_m3_audit_actor_kind
+pnpm exec prisma migrate deploy --to 20260514180000_m3_audit_actor_kind_screaming_case
+
+shred -u /tmp/prod-env || rm -P /tmp/prod-env
+```
+
+After Phase A, both `name` AND (`handle`, `display_name`) live on the
+table; pre-M3 code can still read `name`, M3 code can read either.
+Deploy the M3 application code via Vercel, then **run probe 14
+(M2.5 launch bots still write) + probe 1 (schema state)** before
+proceeding.
+
+### Phase B — drop the legacy column
+
+Once probes 14 + 1 pass against production:
+
+```bash
+vercel env pull --environment=production /tmp/prod-env
+set -a; source /tmp/prod-env; set +a
+pnpm exec prisma migrate deploy --to 20260514160100_m3_drop_bot_name
+shred -u /tmp/prod-env || rm -P /tmp/prod-env
+```
+
+This is irreversible. The next deploy of M4+ application code can
+assume `name` is gone.
+
+### Rollback path (if Phase A breaks)
+
+If migration 1 aborted (preflight collision detected): the schema is
+unchanged. Resolve the colliding rows by hand
+(`UPDATE bots SET name = name || '-' || left(id, 4) WHERE id = ...;`)
+and re-run.
+
+If migration 1 succeeded but downstream M3 code is misbehaving:
+revert the application code to the pre-M3 SHA on Vercel; the schema
+is still backward-compatible (`name` column still present) so the
+old code reads correctly. Then drop the M3 columns:
+
+```sql
+DROP INDEX bots_handle_key;
+DROP INDEX bots_owner_id_display_name_key;
+ALTER TABLE bots DROP COLUMN handle;
+ALTER TABLE bots DROP COLUMN display_name;
+-- Re-add the old per-owner uniqueness on name.
+CREATE UNIQUE INDEX bots_owner_id_name_key ON bots(owner_id, name);
+```
+
+If migration 2 (the drop) has already run: the rollback path is Neon
+PITR. Restore from a branch snapshot taken before the drop, redeploy
+the pre-M3 application code, accept the lost write window for the gap
+between snapshot and now (the audit log + replay path can reconstruct
+canvas state from `pixel_events` for chunks written in that window).
+
+---
+
 ## Probe 1 — Schema state
 
 ```bash

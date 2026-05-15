@@ -130,7 +130,7 @@ export async function PUT(
       data: {
         requestId,
         action: "set_bot_rate_tier",
-        actorKind: "admin_token",
+        actorKind: "ADMIN_TOKEN",
         targetId: botId,
         payloadJson: {
           before: { rate_tier: previousTier },

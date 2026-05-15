@@ -12,6 +12,7 @@ import {
 import {
   AuditActorKind,
   botSummaryToJson,
+  classifyBotUniqueViolation,
   createBotForOwner,
   createBotResultToJson,
   listBotsForOwner,
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
         requestId: ctx.requestId,
         sourceIp: ctx.sourceIp,
         actor: owner.ownerId,
-        actorKind: AuditActorKind.owner,
+        actorKind: AuditActorKind.OWNER,
       },
     });
     return jsonOk(ctx, createBotResultToJson(result), {
@@ -101,21 +102,20 @@ export async function POST(request: Request) {
       headers: rl.headers,
     });
   } catch (err: unknown) {
-    if (isUniqueViolation(err)) {
-      // Two unique constraints can fire here: (handle) globally, and
-      // (owner_id, display_name) per-owner. The Prisma error meta
-      // exposes which target tripped. Surface a per-field invalid_input
-      // so the caller knows which one to change.
-      const target = uniqueViolationTarget(err);
-      if (target.includes("handle")) {
-        return jsonInvalidInput(ctx, {
-          field: "handle",
-          reason: "handle_taken",
-          message: "That handle is already in use. Pick a different one.",
-          extra: owner.logFields,
-        });
-      }
-      // Default: per-owner display_name collision.
+    // Two unique constraints can fire here: `bots_handle_key` (global)
+    // and `bots_owner_id_display_name_key` (per-owner). The shared
+    // classifier in src/bots picks the right per-field error; null
+    // means "P2002 we don't recognize" → re-throw as 500.
+    const conflict = classifyBotUniqueViolation(err);
+    if (conflict === "handle_taken") {
+      return jsonInvalidInput(ctx, {
+        field: "handle",
+        reason: "handle_taken",
+        message: "That handle is already in use. Pick a different one.",
+        extra: owner.logFields,
+      });
+    }
+    if (conflict === "display_name_taken") {
       return jsonInvalidInput(ctx, {
         field: "display_name",
         reason: "display_name_taken",
@@ -137,22 +137,4 @@ export async function GET(request: Request) {
     { items: items.map(botSummaryToJson) },
     { extra: owner.logFields },
   );
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "P2002"
-  );
-}
-
-function uniqueViolationTarget(err: unknown): string {
-  if (typeof err !== "object" || err === null) return "";
-  const meta = (err as { meta?: { target?: unknown } }).meta;
-  if (!meta) return "";
-  if (Array.isArray(meta.target)) return meta.target.join(",");
-  if (typeof meta.target === "string") return meta.target;
-  return "";
 }

@@ -38,18 +38,21 @@ enum BotRateTier {
 // operator hit the admin endpoint with ADMIN_TOKEN" from "an operator
 // script (seed, provisioning) wrote an audit row directly". Added in
 // M3 to make audit-trail queries by actor type easy without parsing
-// `payload_json`. Backfilled to `admin_token` for pre-M3 rows.
+// `payload_json`. Backfilled to `ADMIN_TOKEN` for pre-M3 rows.
+//
+// SCREAMING_CASE mirrors `BotStatus` (`ACTIVE`/`REVOKED`) and
+// `BotRateTier` (`FREE`/`POWER`).
 enum AuditActorKind {
   // ADMIN_TOKEN-bearing HTTP request to /api/v1/admin/...
-  admin_token
+  ADMIN_TOKEN
   // Operator-run mjs/script that talks to the DB directly (seed,
   // provisioning). The script identifies itself in `payload_json` —
   // see `pnpm m25:seed-launch-bots --actor <email>` for the M3 shape.
-  seed_script
+  SEED_SCRIPT
   // Owner-initiated mutation through the standard owner API
   // (POST /api/v1/bots, key mint/rotate/revoke). Added so the audit
   // trail can distinguish "owner did it" from "operator did it".
-  owner
+  OWNER
 }
 
 model Owner {
@@ -190,11 +193,11 @@ model AdminAuditEvent {
   requestId   String         @map("request_id")
   action      String                                              // e.g. "revoke_bot_key"
   // Normalized actor type. M3 backfills pre-existing rows to
-  // `admin_token` since every prior audit row came through the
+  // `ADMIN_TOKEN` since every prior audit row came through the
   // ADMIN_TOKEN-gated admin route. New audit rows from owner-initiated
-  // mutations carry `owner`; operator scripts (seed-launch-bots) carry
-  // `seed_script`.
-  actorKind   AuditActorKind @default(admin_token) @map("actor_kind")
+  // mutations carry `OWNER`; operator scripts (seed-launch-bots) carry
+  // `SEED_SCRIPT`.
+  actorKind   AuditActorKind @default(ADMIN_TOKEN) @map("actor_kind")
   targetId    String?        @map("target_id")                    // bot id, key id, etc.
   payloadJson Json           @map("payload_json")                 // before/after snapshot
   sourceIp    String         @map("source_ip")

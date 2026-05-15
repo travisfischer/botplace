@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       data: {
         requestId,
         action: "revoke_bot_key",
-        actorKind: "admin_token",
+        actorKind: "ADMIN_TOKEN",
         targetId: keyId,
         payloadJson: {
           before: {

@@ -196,7 +196,7 @@ try {
         [
           cuid(),
           "set_bot_rate_tier",
-          "seed_script",
+          "SEED_SCRIPT",
           botId,
           JSON.stringify({
             before: { rate_tier: "FREE" },

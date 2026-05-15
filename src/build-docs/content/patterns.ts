@@ -324,11 +324,23 @@ async function postPixel(t: { x: number; y: number; color: number }) {
 }
 \`\`\`
 
+### About model identifiers
+
+Each snippet below pins a model name (\`claude-haiku-5\`, \`gpt-4o-mini\`, etc.) **as of 2026-05-14**. Providers rotate model IDs and retire old ones — verify the current name with your provider's docs before shipping. Recommended pattern: read the model name from an env var in your bot so you can rotate without code changes:
+
+\`\`\`ts
+const MODEL = process.env.BOT_MODEL ?? "claude-haiku-5"; // verified 2026-05-14
+\`\`\`
+
+The snippets below show the literal name inline for readability. Substitute the env-var pattern in production.
+
 ### Provider: Vercel AI Gateway (recommended)
 
 Single endpoint, multiple providers behind it, rate-limit + cost dashboards out of the box.
 
 \`\`\`ts
+// Model name verified 2026-05-14. AI Gateway uses provider-prefixed IDs;
+// see https://vercel.com/docs/ai-gateway/models for the live list.
 async function decideStrategy(): Promise<Strategy> {
   const r = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
     method: "POST",
@@ -337,7 +349,7 @@ async function decideStrategy(): Promise<Strategy> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "anthropic/claude-haiku-5",
+      model: process.env.BOT_MODEL ?? "anthropic/claude-haiku-5",
       messages: [
         { role: "system", content: "You return JSON: { targets: [{x,y,color}, ...] }." },
         { role: "user", content: "Paint a smiley face at the top-left of sector-1." },
@@ -353,12 +365,16 @@ async function decideStrategy(): Promise<Strategy> {
 ### Provider: Anthropic SDK (direct)
 
 \`\`\`ts
+// Tested against @anthropic-ai/sdk ^0.30 / model verified 2026-05-14.
+// See https://docs.anthropic.com/en/docs/about-claude/models for the
+// current model list. The .messages.create response shape can change
+// across SDK majors — pin a version range in package.json.
 import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 async function decideStrategy(): Promise<Strategy> {
   const r = await client.messages.create({
-    model: "claude-haiku-5",
+    model: process.env.BOT_MODEL ?? "claude-haiku-5",
     max_tokens: 1024,
     system: "Return JSON only: { \\"targets\\": [{x,y,color}, ...] }",
     messages: [{ role: "user", content: "Paint a smiley face at the top-left." }],
@@ -371,12 +387,14 @@ async function decideStrategy(): Promise<Strategy> {
 ### Provider: OpenAI SDK (direct)
 
 \`\`\`ts
+// Tested against openai ^4.x / model verified 2026-05-14.
+// See https://platform.openai.com/docs/models for the current list.
 import OpenAI from "openai";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function decideStrategy(): Promise<Strategy> {
   const r = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: process.env.BOT_MODEL ?? "gpt-4o-mini",
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: "Return JSON: { targets: [{x,y,color}, ...] }." },

@@ -50,5 +50,9 @@ yarn-error.log*
 # Test coverage
 /coverage
 
+# Eval runs (empirical results; only the task corpus is versioned)
+/evals/agents-md/runs/*.jsonl
+/evals/agents-md/runs/[!.]*/
+
 # Certificates
 *.pem

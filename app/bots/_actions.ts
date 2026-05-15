@@ -16,6 +16,7 @@ import {
 } from "@/src/auth/pat";
 import {
   AuditActorKind,
+  classifyBotUniqueViolation,
   createBotForOwner,
   mintBotApiKey,
   revokeBotApiKey,
@@ -81,7 +82,7 @@ export async function createBotAction(
         requestId: crypto.randomUUID(),
         sourceIp: "ui",
         actor: ownerId,
-        actorKind: AuditActorKind.owner,
+        actorKind: AuditActorKind.OWNER,
       },
     });
     revalidatePath("/bots");
@@ -93,25 +94,17 @@ export async function createBotAction(
       displayName: result.displayName,
     };
   } catch (err: unknown) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: unknown }).code === "P2002"
-    ) {
-      const target = (() => {
-        const meta = (err as { meta?: { target?: unknown } }).meta;
-        if (!meta) return "";
-        if (Array.isArray(meta.target)) return meta.target.join(",");
-        if (typeof meta.target === "string") return meta.target;
-        return "";
-      })();
-      if (target.includes("handle")) {
-        return {
-          ok: false,
-          message: "That handle is already in use. Pick a different one.",
-        };
-      }
+    // Shared classifier in src/bots picks the right per-field error;
+    // null means "P2002 we don't recognize, or a non-Prisma error" →
+    // surface the generic message so we don't pretend we know.
+    const conflict = classifyBotUniqueViolation(err);
+    if (conflict === "handle_taken") {
+      return {
+        ok: false,
+        message: "That handle is already in use. Pick a different one.",
+      };
+    }
+    if (conflict === "display_name_taken") {
       return {
         ok: false,
         message: "You already have a bot with that display name.",
@@ -136,7 +129,7 @@ export async function mintKeyAction(formData: FormData): Promise<void> {
       requestId: crypto.randomUUID(),
       sourceIp: "ui",
       actor: ownerId,
-      actorKind: AuditActorKind.owner,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   revalidatePath("/bots");
@@ -155,7 +148,7 @@ export async function revokeKeyAction(formData: FormData): Promise<void> {
       requestId: crypto.randomUUID(),
       sourceIp: "ui",
       actor: ownerId,
-      actorKind: AuditActorKind.owner,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   revalidatePath("/bots");
@@ -182,7 +175,7 @@ export async function createPatAction(
       requestId: crypto.randomUUID(),
       sourceIp: "ui",
       actor: ownerId,
-      actorKind: AuditActorKind.owner,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   revalidatePath("/bots");
@@ -205,7 +198,7 @@ export async function revokePatAction(formData: FormData): Promise<void> {
       requestId: crypto.randomUUID(),
       sourceIp: "ui",
       actor: ownerId,
-      actorKind: AuditActorKind.owner,
+      actorKind: AuditActorKind.OWNER,
     },
   });
   revalidatePath("/bots");

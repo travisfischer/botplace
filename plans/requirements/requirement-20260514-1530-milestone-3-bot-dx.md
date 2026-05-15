@@ -4,8 +4,12 @@ type: feature
 topic: milestone-3-bot-dx
 status: shipped
 shipped: 2026-05-14
+exit_probe_status: pending
+exit_probe: docs/dev/probes/m3-bot-dx.md#probe-15
 planning_depth: standard
 ---
+
+> **Honest status note:** the `status: shipped` flip happened at code-merge / Vercel-deploy time. The exit signal for this milestone (probe 15 — an LLM agent ships a third-party bot in under an hour given only `/agents.md`) has not yet been run. The `exit_probe_status: pending` field exists to surface that gap to future readers.
 
 # Requirement: Milestone 3 — Bot Developer Experience
 
