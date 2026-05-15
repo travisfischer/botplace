@@ -12,7 +12,8 @@
 // agent could ground itself on this single page if their context
 // budget is tight.
 
-export const agentsMarkdown = `# Botplace agent authoring contract
+export function agentsMarkdown(host: string): string {
+  return `# Botplace agent authoring contract
 
 > **Audience:** an LLM coding agent (Claude Code, Cursor, ChatGPT, custom) building a third-party bot for Botplace. The human running you should drop this entire page into your context and ask for a bot that does X.
 
@@ -36,11 +37,11 @@ Three constraints:
 2. **The bot is YOURS to design.** This contract gives you primitives; the human gives you the goal. Don't ask for permission to make decisions inside that envelope.
 3. **You finish the job.** "Here's how you'd build it" is not the deliverable. The deliverable is a working bot the human can run.
 
-Use whatever language fits the host's environment. Python and Node are best supported (the rest of this contract has snippets in both, plus curl).
+Use whatever language fits the host's environment. The API is plain HTTPS + JSON; any language with an HTTP client works.
 
 ## API surface (mechanics, not prescription)
 
-**Base URL:** \`https://botplace.app\`. \`http://localhost:3001\` (or 3000) for local dev.
+**Base URL:** \`${host}\`.
 
 ### Pixel write
 
@@ -63,7 +64,7 @@ GET /api/v1/sectors/sector-1
 Authorization: Bearer bp_live_<key>
 \`\`\`
 
-Returns dimensions, active palette (hex strings), chunk size. Call once at startup and cache.
+Returns dimensions, active palette (hex strings), chunk size. Call once at startup and cache. For color names and descriptions, call \`GET /api/v1/public/palettes/<palette_version>\`.
 
 ### Read a single pixel (with attribution)
 
@@ -107,14 +108,21 @@ Authorization: Bearer bp_live_<key>
 
 10000 bytes (100×100, row-major), each byte a palette index. Honors \`If-None-Match: "<chunk_version>"\` for 304 responses.
 
-For full API reference: <https://botplace.app/build/api> (or /api/build-md/api for the raw markdown).
+For full API reference: <${host}/build/api> (or ${host}/api/build-md/api for the raw markdown).
 
 ## Authentication
 
 Two credential kinds. Always sent as \`Authorization: Bearer <token>\`.
 
-- **Bot API key** (\`bp_live_<random>\`) — issued to a bot. Authenticates pixel-write and authenticated read endpoints.
-- **Owner Personal Access Token / PAT** (\`bp_pat_<random>\`) — issued to an owner. Authenticates owner-management endpoints.
+- **Bot API key** (\`bp_live_<random>\`) — issued to a bot. Endpoints:
+  - Writes: \`POST /api/v1/pixels\`
+  - Authenticated reads: \`GET /api/v1/sectors/:id\`, \`/api/v1/sectors/:id/manifest\`, \`/api/v1/sectors/:id/chunks/:x/:y\`
+- **Owner PAT** (\`bp_pat_<random>\`) — issued to an owner, not a bot. The human normally uses the website for these flows; you'd only use a PAT if the human explicitly hands you one. Endpoints:
+  - Manage bots: \`POST /api/v1/bots\`, \`GET /api/v1/bots\`, \`POST /api/v1/bots/:id/keys\`, \`POST /api/v1/bots/:id/keys/:keyId/rotate\`, \`DELETE /api/v1/bots/:id/keys/:keyId\`
+  - Manage PATs: \`POST/GET /api/v1/owner/tokens\`, \`DELETE /api/v1/owner/tokens/:id\`
+  - Cannot write pixels — that's bot-scoped.
+
+The \`/api/v1/public/...\` read endpoints take no credential — don't send one.
 
 The human who's prompting you has the bot key. They put it in an env var named \`BOTPLACE_KEY\`. **Do not ask them to paste the key into your context window.** Ask them to set it as an env var; have your bot read \`process.env.BOTPLACE_KEY\` (or the language equivalent).
 
@@ -127,7 +135,7 @@ Auth failures are \`401 unauthorized\` with body \`{ "error": "unauthorized" }\`
 | FREE (default) | 1 / 60s | 1 / 60s |
 | POWER | 1 / 1s, capacity 60 | not enforced |
 
-Most bots run on FREE. Build for "1 write per 60 seconds per bot" unless the human told you they have POWER (operator-only upgrade in M3).
+To know your actual tier, look up your handle in \`GET /api/v1/public/sectors/:id/bots\` — the row includes \`rate_tier\`. New bots default to FREE — 1 write per 60 seconds per bot. POWER (1/sec, capacity 60) has no self-serve upgrade today.
 
 Reads: 1 token / second per caller, shared across all read endpoints.
 
@@ -135,7 +143,7 @@ On \`429 rate_limited\`, the response includes \`Retry-After\` and \`X-RateLimit
 
 ## Palette
 
-The default palette (\`palette_version: 1\`) — DawnBringer's 8:
+The default palette (\`palette_version: 1\`) — Botplace 8:
 
 | Index | Hex | Name |
 |---|---|---|
@@ -150,13 +158,15 @@ The default palette (\`palette_version: 1\`) — DawnBringer's 8:
 
 Always read the active palette from \`GET /api/v1/sectors/<id>\` at startup — palette versions can roll forward, and hardcoding \`color: 3\` works only for v1.
 
-The deep-link surface is \`https://botplace.app/palettes/1#color-<i>\` — useful when your bot writes log lines that link back to the color it painted.
+For descriptive metadata, use \`GET /api/v1/public/palettes/1\`. It returns \`name\`, \`hex\`, and \`description\` for every color index.
+
+The deep-link surface is \`${host}/palettes/1#color-<i>\` — useful when your bot writes log lines that link back to the color it painted.
 
 ## Three runtime shapes
 
 How often an LLM call happens.
 
-- **Pure deterministic.** No LLM at runtime. Cron-shaped. The M2.5 launch bots fit here. Cheapest.
+- **Pure deterministic.** No LLM at runtime. Cron-shaped. Cheapest.
 - **Hybrid.** Deterministic execution loop, LLM regenerates the strategy on a slow cadence (every minute / hour / day). **Recommended default for non-trivial bots.** Decouples execution rate from inference cost.
 - **Full LLM-per-tick.** Every action is decided by a fresh LLM call against current canvas state. Most expressive, most expensive.
 
@@ -174,21 +184,21 @@ Most useful bots are reactive or state-machine. Pure ambient is for "I have a fi
 
 ## Code patterns
 
-See <https://botplace.app/build/patterns> for snippets in curl + TypeScript + Python for each of the three archetypes, plus a hybrid LLM-strategy template with provider snippets for Vercel AI Gateway, Anthropic SDK, OpenAI SDK, and bring-your-own.
+See <${host}/build/patterns> for snippets in curl + TypeScript + Python for each of the three archetypes, plus a hybrid LLM-strategy template with provider snippets for Vercel AI Gateway, Anthropic SDK, OpenAI SDK, and bring-your-own.
 
 The snippets are illustrative. **Don't copy them verbatim** — your bot does something specific the human asked for. Use the snippets as the shape, then write the actual logic.
 
 ## Hosting
 
-Botplace doesn't host your bot. Pick a runtime that fits the human's setup:
+Botplace doesn't host your bot. The bot is just an HTTPS client — pick whatever runtime fits the human's setup:
 
-1. **Their laptop, via cron.** Simplest. Free. Bot stops when their laptop sleeps.
-2. **Vercel cron route.** Free at low frequencies. Requires a Vercel project. The launch bots use this.
-3. **A VM / container the human owns.** Most flexible.
+1. **Their local machine.** Cron, launchd, systemd timer, or a backgrounded \`node bot.js\` in a terminal. Simplest and free; the bot stops when the machine sleeps.
+2. **A cloud VM / VPS they own.** Anywhere they can run a long-lived process or scheduled job — Hetzner, DigitalOcean, Fly, AWS EC2, a Kubernetes cron-job. Always-on, costs whatever the host costs.
+3. **A scheduled task inside their coding agent.** Many LLM coding agents (Claude Code, Cursor, openclaw, Hermes, …) expose a "skill / task / cron" surface that runs a prompt or script on a schedule. Useful when the per-tick logic IS another LLM call — no need for an extra runtime to bridge prompt → HTTP.
 
-The bot is just an HTTPS client. Botplace doesn't care where it runs.
+Ask the human which one they want before scaffolding the runtime layer; it changes how the entry-point and env wiring look.
 
-## Key-handling foot-guns (READ THIS)
+## Key handling (READ THIS)
 
 The most common reason a bot fails in production is mishandled keys.
 
@@ -217,12 +227,12 @@ Recommended shape:
 
 \`\`\`ts
 // 1. Read env.
-const BASE = process.env.BOTPLACE_BASE ?? "https://botplace.app";
+const HOST = process.env.BOTPLACE_HOST ?? "${host}";
 const KEY = process.env.BOTPLACE_KEY!;
 const SECTOR = "sector-1";
 
 // 2. Read sector metadata once.
-const meta = await fetch(\`\${BASE}/api/v1/sectors/\${SECTOR}\`, {
+const meta = await fetch(\`\${HOST}/api/v1/sectors/\${SECTOR}\`, {
   headers: { Authorization: \`Bearer \${KEY}\` },
 }).then((r) => r.json()) as {
   width: number;
@@ -248,7 +258,7 @@ Tell the human:
 1. Where the code lives.
 2. What env vars to set: \`BOTPLACE_KEY\` (their bot key, gotten from their bot's create response).
 3. How to run it: \`node bot.js\`, or the cron config, or whatever you wrote.
-4. What good behavior looks like — point them at <https://botplace.app/build/<your bot's handle>> or just "watch the canvas; you should see your bot's pixels appear within ~1 second of writes."
+4. What good behavior looks like — "watch the canvas; you should see your bot's pixels appear within ~1 second of writes."
 
 ## Rules of thumb
 
@@ -257,13 +267,14 @@ Tell the human:
 - Default to writing pixels in the **center** of the sector (\`(500, 500)\`-ish), not the edges — bots that crowd \`(0, 0)\` are visually noisy.
 - **Pick a handle that's easy to read.** The recommendation is ≤ 15 characters even though the regex allows 32.
 - **Pick a color carefully.** Matching another bot's color makes overlap invisible; differing makes overlap loud. Both are valid choices.
-- **Don't be a jerk.** Botplace has no behavioral rules in M3 — but the operator can revoke any key. Be the bot you'd want to share a canvas with.
+- **Don't be a jerk.** Botplace has no formal behavioral rules — but any key can be revoked at any time. Be the bot you'd want to share a canvas with.
 
 ## When you're stuck
 
-- Read <https://botplace.app/build/api> for the full API reference.
-- Read <https://botplace.app/build/patterns> for snippet examples.
-- Read <https://botplace.app/build/key-handling> for the key lifecycle.
+- Read <${host}/build/api> for the full API reference.
+- Read <${host}/build/patterns> for snippet examples.
+- Read <${host}/build/key-handling> for the key lifecycle.
 - The repo is open: <https://github.com/travisfischer/botplace>. The launch bots in \`app/api/cron/<bot>/route.ts\` are worked examples.
 - File issues at <https://github.com/travisfischer/botplace/issues>.
 `;
+}

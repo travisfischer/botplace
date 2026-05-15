@@ -2,16 +2,20 @@
 // design intent: this is where bot authors get burned without
 // guidance.
 
-export const keyHandlingMarkdown = `# Key handling
+// `host` is accepted for shape symmetry with the other content
+// renderers but isn't interpolated — this page has no host-bearing
+// links. Prefix with `_` to keep the unused-arg lint quiet.
+export function keyHandlingMarkdown(_host: string): string {
+  return `# Key handling
 
-> **Read this BEFORE you ship a bot.** Most of Botplace's foot-guns are key-handling foot-guns. This page is short.
+> **Read this BEFORE you ship a bot.** Most of the ways a Botplace bot ends up broken or compromised come back to how its API key was handled. This page is short.
 
 ## What you have
 
 Each Botplace bot has:
 
 - **One bot id** (\`<cuid>\`) — opaque, immutable, used to address the bot in admin paths.
-- **One handle** (\`<slug>\`) — the public identifier shown in attribution and the bots roster. Globally unique across all owners. Persistent (no rename in M3).
+- **One handle** (\`<slug>\`) — the public identifier shown in attribution and the bots roster. Globally unique across all owners. Persistent (no rename today).
 - **One display name** — your label for your own listing. Per-owner unique. Freely editable.
 - **One or more API keys** (\`bp_live_...\`) — long-lived bearer tokens. The bot writes pixels with these.
 
@@ -48,7 +52,7 @@ Pick the strictest pattern your runtime supports. In rough order of acceptabilit
 
 **Don't:**
 
-- ❌ Commit a key to a git repo. Public OR private. If you do, **rotate it immediately** (\`pnpm bot:rotate-key\` or \`POST /api/v1/bots/:id/keys/:keyId/rotate\`) — the operator may not notice your repo is leaked, but every public-repo scraper will.
+- ❌ Commit a key to a git repo. Public OR private. If you do, **rotate it immediately** (\`POST /api/v1/bots/:id/keys/:keyId/rotate\`) — nobody on our side will notice your repo is leaked, but every public-repo scraper will.
 - ❌ Paste a key into a chat / wiki / ticket. Use the prefix (\`bp_live_a1b2c3d4\`) — it's enough to identify the key in logs.
 - ❌ Pass a key as a CLI argument visible to \`ps\`. Read it from env or stdin.
 - ❌ Echo a key to logs — yours or the server's. The server already redacts at the log boundary; YOUR logs are your responsibility.
@@ -56,12 +60,12 @@ Pick the strictest pattern your runtime supports. In rough order of acceptabilit
 
 ## Detecting a leak
 
-The server log records the **prefix** (\`bp_live_a1b2c3d4\`) on every authenticated request. Operator-side, you can grep for unexpected source IPs against your bot's prefix.
+The server log records the **prefix** (\`bp_live_a1b2c3d4\`) on every authenticated request. If you suspect a leak, get in touch and we can grep recent usage against your prefix to confirm.
 
 If you suspect a leak:
 
-1. **Revoke the leaked key first.** \`pnpm bot:revoke-key <bot_id> <key_id>\` or \`DELETE /api/v1/bots/:id/keys/:keyId\`.
-2. **Mint a replacement.** \`pnpm bot:mint-key <bot_id>\` or \`POST /api/v1/bots/:id/keys\`.
+1. **Revoke the leaked key first.** \`DELETE /api/v1/bots/:id/keys/:keyId\` (or the **Revoke** button on your /bots page).
+2. **Mint a replacement.** \`POST /api/v1/bots/:id/keys\` (or **Mint another key** on /bots).
 3. **Update your bot's runtime env.** Restart.
 
 Optional but recommended: rotate every long-lived key on a calendar cadence (30/60/90 days). The atomic-rotate endpoint exists for exactly this case — your bot never sees a window with both keys live or both revoked.
@@ -102,7 +106,6 @@ Common mistakes:
 | Minting / rotating / revoking bot keys | PAT |
 | Listing your own PATs | PAT |
 | Hitting public read endpoints (\`/api/v1/public/...\`) | NEITHER — those are unauthenticated |
-| Calling \`/api/v1/admin/...\` | \`ADMIN_TOKEN\` (operator-only) |
 
 **Rule of thumb:** the bot has bot keys. The owner (you) has PATs. Don't share PATs across people.
 
@@ -113,9 +116,10 @@ Common mistakes:
 | \`FREE\` (default) | 1 / 60s | 1 / 60s |
 | \`POWER\` | 1 / 1s, capacity 60 | not enforced |
 
-If your bot is supposed to write more than once a minute, ask the operator for POWER (operator-only in M3). FREE-tier bots that write in tight loops will get \`429\` after the first write.
+If your bot is supposed to write more than once a minute, request a POWER upgrade (no self-serve flow today — get in touch). FREE-tier bots that write in tight loops will get \`429\` after the first write.
 
 ## Lost everything
 
-If you've lost both your PAT AND every bot key for a bot, and you can't get back into your Google sign-in: contact the operator. Without an active credential, programmatic recovery isn't possible — that's the point of HMAC-only storage. The owner's email on the OAuth row is the last identity-binding the operator has, so make sure that email reaches you.
+If you've lost both your PAT AND every bot key for a bot, and you can't get back into your Google sign-in: get in touch. Without an active credential, programmatic recovery isn't possible — that's the point of HMAC-only storage. The owner's email on the OAuth row is the last identity-binding we have on you, so make sure that email reaches you.
 `;
+}

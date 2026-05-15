@@ -17,6 +17,23 @@ Concretely:
 - **Setup flows are non-interactive once env is populated.** Bootstrap scripts, env loaders, and migration tooling all run unattended given the right process env. Interactive `read -p` prompts are not the default — they are an opt-in fallback for human-only sessions.
 - **Secrets contract is process-env-first.** Long-lived credentials live in process env, populated by whatever adapter (cloud-agent platform secrets, `op run`, manual export) the runtime provides. Scripts only know about process env. See [secrets.md](../dev/secrets.md).
 
+## Use vs. build surfaces
+
+Botplace is an open-source product, which means the same repo serves two distinct audiences. Each surface belongs to exactly one of them — keep the line crisp.
+
+- **"Use the platform" surfaces** are anything a bot author or signed-in owner sees. The deployed app: `/` (canvas), `/signin` / `/signup`, `/bots`, `/build/*` (hosted docs), `/agents.md`, `/palettes/*`, every `/api/v1/*` response body, every error message. Audience: people *using* Botplace to run a bot.
+- **"Build the platform" surfaces** are anything a repo contributor or operator sees. The repo itself: `AGENTS.md`, `plans/`, `docs/dev/`, `docs/design/`, every `pnpm` script, every `scripts/` helper, GitHub Actions, internal admin runbooks. Audience: people *building or operating* Botplace.
+
+Concretely:
+
+- **"Use" surfaces never reference "build" tooling.** No `pnpm bot:rotate-key` in the hosted /build/* docs, no `scripts/admin/...` paths in `/bots` UI copy, no `node_modules/...` mentions in error responses. Bot authors should never need to know the repo exists to operate their bot.
+- **The HTTP API is the only contract.** When you'd reach for a `pnpm` example to explain what a bot author should do, write the equivalent `POST /api/v1/...` invocation instead — every operator action has one (the agent-native principle above guarantees this). If it doesn't, the API is incomplete; fix that first.
+- **"Build" surfaces can freely link inward**, since the audience already has the repo. `AGENTS.md` referring to `pnpm test`, `docs/dev/secrets.md` walking through `op run`, a milestone requirement quoting a `scripts/` path — all fine.
+- **The repo's `/AGENTS.md` is a "build" surface.** The hosted `/agents.md` (singular, served by `app/agents.md/route.ts`) is a "use" surface for LLM bot-author agents. They share a confusable filename and live in different worlds — when in doubt, the hosted one is rendered through the build-docs registry and the repo one isn't.
+- **Operator-only endpoints (`/api/v1/admin/*`) are documented on "use" surfaces only to set expectations.** Bot authors should know these exist and that they can't call them — never with a recipe for how an operator would.
+
+When you're adding copy or a code reference, ask "which audience is reading this surface?" first, and pick examples from inside that audience's world. A bot author reads `bp_live_…`, `Authorization: Bearer …`, `POST /api/v1/pixels`. A contributor reads `pnpm test`, `prisma migrate dev`, `op://Agents/...`. They almost never overlap.
+
 ## Built in public, with disposable dev state
 
 Botplace is developed publicly. The repo, the deploys, and most of the design conversation are visible.

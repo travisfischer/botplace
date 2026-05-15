@@ -96,23 +96,34 @@ export type BotUniqueConflict = "handle_taken" | "display_name_taken" | null;
  * inline (the M3 multi-reviewer review's P2.7).
  */
 export function classifyBotUniqueViolation(err: unknown): BotUniqueConflict {
-  if (
-    typeof err !== "object" ||
-    err === null ||
-    !("code" in err) ||
-    (err as { code: unknown }).code !== "P2002"
-  ) {
-    return null;
-  }
+  if (typeof err !== "object" || err === null) return null;
+  const code = (err as { code?: unknown }).code;
   const meta = (err as { meta?: { target?: unknown } }).meta;
-  if (!meta) return null;
-  const target = Array.isArray(meta.target)
-    ? meta.target.join(",")
-    : typeof meta.target === "string"
-      ? meta.target
+  if (code === "P2002" && meta) {
+    const target = Array.isArray(meta.target)
+      ? meta.target.join(",")
+      : typeof meta.target === "string"
+        ? meta.target
+        : "";
+    if (target.includes("handle")) return "handle_taken";
+    if (target.includes("display_name")) return "display_name_taken";
+  }
+  // Fallback: when Prisma wraps the P2002 (e.g. inside $transaction) the
+  // top-level `code`/`meta` can disappear, but the message text still
+  // carries "Unique constraint failed on the fields: (`<col>`)". Match
+  // on that as a safety net so we never bubble raw Prisma noise to UIs.
+  const message =
+    typeof (err as { message?: unknown }).message === "string"
+      ? (err as { message: string }).message
       : "";
-  if (target.includes("handle")) return "handle_taken";
-  if (target.includes("display_name")) return "display_name_taken";
+  const m = /Unique constraint failed on the fields:\s*\(`?([^`)]+)`?\)/.exec(
+    message,
+  );
+  if (m) {
+    const fields = m[1];
+    if (fields.includes("handle")) return "handle_taken";
+    if (fields.includes("display_name")) return "display_name_taken";
+  }
   return null;
 }
 

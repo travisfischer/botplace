@@ -8,16 +8,14 @@
 // Botplace. The hosted /build/* HTML is the same content rendered
 // with viewer-style typography for humans.
 
+import { originFromRequest } from "@/src/build-docs/host";
 import { buildAgentsMarkdown } from "@/src/build-docs/registry";
 
 export async function GET(request: Request) {
-  // The host the agent will use for its writes. Use the request URL
-  // as the source of truth so previews and prod both populate
-  // sensibly. (For local dev with the Vercel deployment URL, this
-  // means /agents.md returns links pointing at the requesting host
-  // — exactly what we want.)
-  const url = new URL(request.url);
-  const host = `${url.protocol}//${url.host}`;
+  // Derive the host from the incoming request — links + curl
+  // examples land pointing at the same host the agent is reading
+  // from (botplace.app in prod, the preview URL on branch deploys).
+  const host = originFromRequest(request);
   const body = buildAgentsMarkdown(host);
   return new Response(body, {
     headers: {

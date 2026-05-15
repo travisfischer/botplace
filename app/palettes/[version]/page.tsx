@@ -11,7 +11,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { PALETTE_V1, getPalette } from "@/src/palettes";
+import { getPalette } from "@/src/palettes";
 
 export function generateStaticParams() {
   return [{ version: "1" }];
@@ -58,27 +58,12 @@ function contrastingColor(hex: string): string {
   return luminance > 0.55 ? "#0e0e16" : "#dcf5ff";
 }
 
-const NAMES_V1: readonly string[] = [
-  "black (default fill)",
-  "dark purple",
-  "dark gray",
-  "orange",
-  "blue",
-  "green",
-  "yellow",
-  "off-white",
-];
-
 export default async function PaletteVersionPage({ params }: PageProps) {
   const { version } = await params;
   const v = Number(version);
   if (!Number.isInteger(v) || v <= 0) notFound();
   const palette = getPalette(v);
   if (!palette) notFound();
-
-  // Names lookup matches palette_version 1 only; future palettes
-  // would extend NAMES_V1 with an alternative naming bag.
-  const names = palette.version === PALETTE_V1.version ? NAMES_V1 : palette.colors.map((_, i) => `color ${i}`);
 
   return (
     <div style={PAGE_STYLE}>
@@ -97,6 +82,13 @@ export default async function PaletteVersionPage({ params }: PageProps) {
             canvas renders the indexed color.
           </p>
           <p style={{ opacity: 0.85 }}>
+            Bots can read this same descriptive metadata from{" "}
+            <code style={pillStyle}>
+              GET /api/v1/public/palettes/{palette.version}
+            </code>
+            .
+          </p>
+          <p style={{ opacity: 0.85 }}>
             Each row has a hash anchor — link directly to a color with{" "}
             <code style={pillStyle}>
               /palettes/{palette.version}#color-3
@@ -105,12 +97,12 @@ export default async function PaletteVersionPage({ params }: PageProps) {
           </p>
         </header>
         <div role="list">
-          {palette.colors.map((hex, i) => {
-            const text = contrastingColor(hex);
+          {palette.colorDescriptions.map((color) => {
+            const text = contrastingColor(color.hex);
             return (
               <div
-                key={i}
-                id={`color-${i}`}
+                key={color.index}
+                id={`color-${color.index}`}
                 role="listitem"
                 style={{
                   display: "flex",
@@ -124,7 +116,7 @@ export default async function PaletteVersionPage({ params }: PageProps) {
                 <div
                   style={{
                     flex: "0 0 84px",
-                    background: hex,
+                    background: color.hex,
                     color: text,
                     display: "flex",
                     alignItems: "center",
@@ -132,9 +124,9 @@ export default async function PaletteVersionPage({ params }: PageProps) {
                     fontSize: 20,
                     fontWeight: 600,
                   }}
-                  aria-label={`palette index ${i}`}
+                  aria-label={`palette index ${color.index}`}
                 >
-                  {i}
+                  {color.index}
                 </div>
                 <div
                   style={{
@@ -144,12 +136,15 @@ export default async function PaletteVersionPage({ params }: PageProps) {
                   }}
                 >
                   <div style={{ fontSize: 16, fontWeight: 500 }}>
-                    {names[i]}
+                    {color.name}
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.88, marginTop: 4 }}>
+                    {color.description}
                   </div>
                   <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
-                    Hex: <code style={pillStyle}>{hex}</code>
+                    Hex: <code style={pillStyle}>{color.hex}</code>
                     <span style={{ marginLeft: 12 }}>
-                      Index: <code style={pillStyle}>{i}</code>
+                      Index: <code style={pillStyle}>{color.index}</code>
                     </span>
                   </div>
                 </div>
@@ -180,7 +175,8 @@ export default async function PaletteVersionPage({ params }: PageProps) {
           — both planned), hex values for an existing index may shift. Always
           read the active palette from{" "}
           <code style={pillStyle}>GET /api/v1/sectors/&lt;id&gt;</code> at
-          startup rather than hardcoding a hex value in your bot.
+          startup, then read descriptions from{" "}
+          <code style={pillStyle}>GET /api/v1/public/palettes/&lt;version&gt;</code>.
         </p>
       </div>
     </div>

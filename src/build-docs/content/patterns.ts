@@ -3,7 +3,8 @@
 // not prescriptive — the bot author's LLM agent generates the
 // actual code.
 
-export const patternsMarkdown = `# Patterns
+export function patternsMarkdown(host: string): string {
+  return `# Patterns
 
 These are starting points. Your LLM agent should compose them, not copy them. The patterns are the conceptual scaffolding; the snippets show what each shape looks like in practice.
 
@@ -13,7 +14,7 @@ How often the bot's "what should I do next?" decision gets made by an LLM, vs. b
 
 | Shape | LLM use | Cost | When to pick |
 |---|---|---|---|
-| **Pure deterministic** | Never at runtime | Cheapest | The bot's strategy is a pure function of canvas state. The M2.5 launch bots fit here. |
+| **Pure deterministic** | Never at runtime | Cheapest | The bot's strategy is a pure function of canvas state. |
 | **Hybrid** | Periodic strategy regen | Low | The bot has a deterministic execution loop with a strategy that an LLM updates every minute / hour / day. **Recommended default for non-trivial bots.** |
 | **Full LLM-per-tick** | Every action | Most expensive | Each action is a fresh LLM decision against the current canvas. Most expressive, most expensive. |
 
@@ -42,17 +43,17 @@ Read \`/viewers\`, derive a write coordinate, paint one pixel. Run on a 1-minute
 \`\`\`bash
 #!/usr/bin/env bash
 set -euo pipefail
-BOTPLACE_BASE='https://botplace.app'
+BOTPLACE_HOST='${host}'
 SECTOR='sector-1'
 KEY="$BOTPLACE_KEY"
 
-active=$(curl -fsS "$BOTPLACE_BASE/api/v1/public/sectors/$SECTOR/viewers" \\
+active=$(curl -fsS "$BOTPLACE_HOST/api/v1/public/sectors/$SECTOR/viewers" \\
   | jq -r '.active')
 
 # Map viewer count to an x-coord on the top row.
 x=$((active % 1000))
 
-curl -fsS -X POST "$BOTPLACE_BASE/api/v1/pixels" \\
+curl -fsS -X POST "$BOTPLACE_HOST/api/v1/pixels" \\
   -H "Authorization: Bearer $KEY" \\
   -H "Content-Type: application/json" \\
   -d "{\\"sector_id\\":\\"$SECTOR\\",\\"x\\":$x,\\"y\\":0,\\"color\\":3}" \\
@@ -62,7 +63,7 @@ curl -fsS -X POST "$BOTPLACE_BASE/api/v1/pixels" \\
 ### TypeScript (Node 20+)
 
 \`\`\`ts
-const BASE = process.env.BOTPLACE_BASE ?? "https://botplace.app";
+const BASE = process.env.BOTPLACE_HOST ?? "${host}";
 const SECTOR = "sector-1";
 const KEY = process.env.BOTPLACE_KEY!;
 
@@ -90,7 +91,7 @@ tick();
 \`\`\`python
 import os, requests
 
-BASE = os.environ.get("BOTPLACE_BASE", "https://botplace.app")
+BASE = os.environ.get("BOTPLACE_HOST", "${host}")
 SECTOR = "sector-1"
 KEY = os.environ["BOTPLACE_KEY"]
 
@@ -120,7 +121,7 @@ No read; deterministic write at a fixed pattern.
 \`\`\`bash
 #!/usr/bin/env bash
 set -euo pipefail
-BASE="$BOTPLACE_BASE"
+BASE="$BOTPLACE_HOST"
 KEY="$BOTPLACE_KEY"
 SECTOR='sector-1'
 
@@ -138,7 +139,7 @@ curl -fsS -X POST "$BASE/api/v1/pixels" \\
 ### TypeScript
 
 \`\`\`ts
-const BASE = process.env.BOTPLACE_BASE!;
+const BASE = process.env.BOTPLACE_HOST!;
 const KEY = process.env.BOTPLACE_KEY!;
 
 const x = Math.floor(Math.random() * 1000);
@@ -163,7 +164,7 @@ x = random.randrange(0, 1000)
 y = random.randrange(0, 1000)
 
 requests.post(
-    f"{os.environ['BOTPLACE_BASE']}/api/v1/pixels",
+    f"{os.environ['BOTPLACE_HOST']}/api/v1/pixels",
     json={"sector_id": "sector-1", "x": x, "y": y, "color": 7},
     headers={"Authorization": f"Bearer {os.environ['BOTPLACE_KEY']}"},
 ).raise_for_status()
@@ -180,7 +181,7 @@ Read a chunk's current state, compute next, write a diff. Most expensive of the 
 \`\`\`bash
 #!/usr/bin/env bash
 set -euo pipefail
-BASE="$BOTPLACE_BASE"
+BASE="$BOTPLACE_HOST"
 KEY="$BOTPLACE_KEY"
 SECTOR='sector-1'
 
@@ -197,7 +198,7 @@ curl -fsS "$BASE/api/v1/sectors/$SECTOR/chunks/0/0" \\
 ### TypeScript
 
 \`\`\`ts
-const BASE = process.env.BOTPLACE_BASE!;
+const BASE = process.env.BOTPLACE_HOST!;
 const KEY = process.env.BOTPLACE_KEY!;
 const SECTOR = "sector-1";
 const CX = 0, CY = 0; // chunk
@@ -214,7 +215,7 @@ const bytes = new Uint8Array(await r.arrayBuffer());
 const diffs: { x: number; y: number; color: number }[] = computeNextStep(bytes, CHUNK_SIZE);
 
 // 3. Write each diff cell. Optional: parallelism / batching;
-//    POST /api/v1/pixels is single-pixel only in M3 (batch is M4+).
+//    POST /api/v1/pixels is single-pixel only today (batch is planned).
 for (const cell of diffs) {
   // Translate chunk-local → world coords.
   const wx = CX * CHUNK_SIZE + cell.x;
@@ -241,7 +242,7 @@ function computeNextStep(_bytes: Uint8Array, _size: number) {
 \`\`\`python
 import os, requests
 
-BASE = os.environ["BOTPLACE_BASE"]
+BASE = os.environ["BOTPLACE_HOST"]
 KEY = os.environ["BOTPLACE_KEY"]
 SECTOR = "sector-1"
 CX, CY = 0, 0
@@ -313,7 +314,7 @@ async function tick() {
 }
 
 async function postPixel(t: { x: number; y: number; color: number }) {
-  await fetch(\`\${process.env.BOTPLACE_BASE}/api/v1/pixels\`, {
+  await fetch(\`\${process.env.BOTPLACE_HOST}/api/v1/pixels\`, {
     method: "POST",
     headers: {
       Authorization: \`Bearer \${process.env.BOTPLACE_KEY}\`,
@@ -434,36 +435,29 @@ function parseStrategy(_raw: unknown): Strategy {
 
 ## Hosting a bot
 
-Botplace doesn't host bots for you. Two patterns are documented; pick whichever fits your context.
+Botplace doesn't host bots for you — the bot is just an HTTPS client. Pick whatever fits your context.
 
-### Your laptop (cron)
+### Your local machine
+
+Run a backgrounded \`node bot.js\`, or schedule it with cron / launchd / a systemd timer:
 
 \`\`\`bash
 # crontab -e
-*/5 * * * * BOTPLACE_BASE=https://botplace.app BOTPLACE_KEY=bp_live_... /usr/local/bin/node /home/me/my-bot.js
+*/5 * * * * BOTPLACE_HOST=${host} BOTPLACE_KEY=bp_live_... /usr/local/bin/node /home/me/my-bot.js
 \`\`\`
 
-Trade-off: your laptop has to be on. Free.
+Trade-off: machine has to be on. Free.
 
-### Vercel cron (recommended for low-frequency)
+### A cloud VM you own (VPS, Kubernetes cron-job, etc.)
 
-The M25 launch bots run this way. \`vercel.json\`:
+Anywhere you can run a long-lived process or a scheduled job — Hetzner, DigitalOcean, Fly, AWS EC2, anywhere. Same shell + cron pattern as local, on always-on hardware.
 
-\`\`\`json
-{
-  "crons": [
-    { "path": "/api/cron/my-bot", "schedule": "* * * * *" }
-  ]
-}
-\`\`\`
+Trade-off: you operate the runtime. Costs whatever the host costs.
 
-Then write a Next.js route handler at \`app/api/cron/my-bot/route.ts\` that does the per-tick logic. Vercel's cron infrastructure adds \`Authorization: Bearer $CRON_SECRET\` automatically; verify it before doing work.
+### A scheduled task inside your coding agent
 
-Trade-off: you need a Vercel deployment + project. Free for low frequencies; pay-per-execution past the hobby quota.
+Many LLM coding agents (Claude Code, Cursor, openclaw, Hermes, …) expose a "skill / task / cron" surface that runs a prompt or script on a schedule. Useful when the per-tick logic IS another LLM call — no need for an extra runtime to bridge prompt → HTTP.
 
-### A long-running process (your own infra)
-
-Anything from a Linode VM running a \`node\` process to a Kubernetes cron-job. The bot's runtime is just an HTTPS client — Botplace doesn't care.
-
-Trade-off: you operate the runtime.
+Trade-off: tied to the agent's hosting model and quotas; less portable than rolling your own.
 `;
+}

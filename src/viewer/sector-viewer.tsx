@@ -90,12 +90,28 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     startX: number;
     startY: number;
     startedAt: number;
+    // True when the inspect box was already open at gesture start.
+    // A click in this state should dismiss the box, not open a new one.
+    // (Inspect-box stopPropagation means onPointerDown only fires for
+    // clicks OUTSIDE the box, so this flag really does mean "dismiss".)
+    dismissOnly: boolean;
   } | null>(null);
   // CSS-pixel threshold below which a pointer up counts as a click.
   // Existing pan code already operates in CSS px; 5px is roughly the
   // conservative drag threshold the platform's own click event uses.
   const CLICK_DRAG_THRESHOLD_PX = 5;
   const CLICK_MAX_DURATION_MS = 500;
+  // Defer single-click inspect by ~one dblclick window so a fast
+  // double-click (which zooms) doesn't briefly flash the inspect box
+  // before the zoom happens. Cancelled if dblclick fires within window.
+  const CLICK_INSPECT_DEFER_MS = 250;
+  const pendingInspectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Hover highlight: only show when each world pixel is at least this
+  // many screen px (otherwise a 1×1 highlight looks like noise).
+  const HOVER_HIGHLIGHT_MIN_SCALE = 4;
+  const [hoverPx, setHoverPx] = useState<{ wx: number; wy: number } | null>(
+    null,
+  );
 
   // ---- Initial fit + window resize ----
   useEffect(() => {
@@ -242,6 +258,15 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     return () => window.removeEventListener("resize", onResize);
   }, [updateRect]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingInspectRef.current !== null) {
+        clearTimeout(pendingInspectRef.current);
+        pendingInspectRef.current = null;
+      }
+    };
+  }, []);
+
   const applyTransform = useCallback(
     (next: Transform) => {
       const rect = containerRectRef.current;
@@ -274,6 +299,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
         startX: sp.x,
         startY: sp.y,
         startedAt: Date.now(),
+        dismissOnly: inspect !== null,
       };
     } else {
       pointerDownRef.current = null;
@@ -291,6 +317,13 @@ export function SectorViewer({ meta }: SectorViewerProps) {
 
   const onPointerMove = (e: React.PointerEvent) => {
     const prev = pointersRef.current.get(e.pointerId);
+    // Hover highlight: track the world pixel under the cursor whenever
+    // no pointer is captured (i.e. the user is hovering, not dragging).
+    if (pointersRef.current.size === 0) {
+      const sp = screenPoint(e);
+      const world = screenToWorld(transformRef.current, sp, meta);
+      setHoverPx(world ? { wx: world.x, wy: world.y } : null);
+    }
     if (!prev) return;
     const next = screenPoint(e);
     pointersRef.current.set(e.pointerId, next);
@@ -399,10 +432,24 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       const distance = Math.hypot(dx, dy);
       const elapsed = Date.now() - down.startedAt;
       pointerDownRef.current = null;
-      if (distance <= CLICK_DRAG_THRESHOLD_PX && elapsed <= CLICK_MAX_DURATION_MS) {
+      if (
+        distance <= CLICK_DRAG_THRESHOLD_PX &&
+        elapsed <= CLICK_MAX_DURATION_MS &&
+        !down.dismissOnly
+      ) {
         const world = screenToWorld(transformRef.current, now, meta);
         if (world) {
-          void inspectPixel(world.x, world.y, now.x, now.y);
+          if (pendingInspectRef.current !== null) {
+            clearTimeout(pendingInspectRef.current);
+          }
+          const wx = world.x;
+          const wy = world.y;
+          const sx = now.x;
+          const sy = now.y;
+          pendingInspectRef.current = setTimeout(() => {
+            pendingInspectRef.current = null;
+            void inspectPixel(wx, wy, sx, sy);
+          }, CLICK_INSPECT_DEFER_MS);
         }
       }
     } else {
@@ -422,6 +469,10 @@ export function SectorViewer({ meta }: SectorViewerProps) {
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
+    if (pendingInspectRef.current !== null) {
+      clearTimeout(pendingInspectRef.current);
+      pendingInspectRef.current = null;
+    }
     updateRect();
     const anchor = screenPoint(e as unknown as React.PointerEvent);
     applyTransform(zoomAround(transformRef.current, anchor, 2));
@@ -463,6 +514,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={() => setHoverPx(null)}
       onWheel={onWheel}
       onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
@@ -515,6 +567,25 @@ export function SectorViewer({ meta }: SectorViewerProps) {
           }}
         />
       )}
+      {hoverPx &&
+        transform.scale >= HOVER_HIGHLIGHT_MIN_SCALE &&
+        !inspect && (
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: hoverPx.wx * transform.scale + transform.tx,
+              top: hoverPx.wy * transform.scale + transform.ty,
+              width: transform.scale,
+              height: transform.scale,
+              pointerEvents: "none",
+              boxSizing: "border-box",
+              border: "1px solid rgba(255,255,255,0.55)",
+              boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.45)",
+              zIndex: 5,
+            }}
+          />
+        )}
       {!healthy && (
         <div role="status" aria-live="polite" style={stalePillStyle}>
           Reconnecting…

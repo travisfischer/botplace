@@ -5,11 +5,17 @@
 //   - `slug`: URL fragment (e.g. "quickstart" → /build/quickstart).
 //   - `title`: page title (rendered in nav + HTML <title>).
 //   - `summary`: one-line teaser shown on the /build index.
-//   - `markdown`: the canonical markdown source. Same string is:
-//       1. Rendered as HTML by the page server component.
-//       2. Returned verbatim by /api/build-md/:slug for the
-//          "Copy as markdown" button + LLM ingestion.
-//       3. Concatenated by /agents.md for one-shot agent fetch.
+//   - `render(host)`: produces the canonical markdown source. The
+//     same function is invoked by:
+//       1. The /build/<slug> page server component.
+//       2. /api/build-md/<slug> for the "Copy as markdown" button +
+//          LLM ingestion.
+//       3. /agents.md for one-shot agent fetch.
+//
+// `host` is the public origin the reader is on (e.g.
+// "https://botplace.app", "http://localhost:3001"). Resolved per
+// request so links + curl examples point at the same host as the
+// docs themselves — no `botplace.app` literals in the content.
 //
 // Adding a page is one edit here. The order in `BUILD_PAGES` is the
 // nav order and the /agents.md concatenation order.
@@ -24,7 +30,7 @@ export interface BuildPage {
   slug: string;
   title: string;
   summary: string;
-  markdown: string;
+  render: (host: string) => string;
 }
 
 export const BUILD_PAGES: readonly BuildPage[] = [
@@ -32,35 +38,35 @@ export const BUILD_PAGES: readonly BuildPage[] = [
     slug: "quickstart",
     title: "Quickstart",
     summary: "Mint a key, write your first pixel — under 60 seconds.",
-    markdown: quickstartMarkdown,
+    render: quickstartMarkdown,
   },
   {
     slug: "agents",
     title: "Agent authoring contract",
     summary:
       "The single artifact to drop into your LLM agent (Claude Code, Cursor, ChatGPT) and say \"build me a Botplace bot.\"",
-    markdown: agentsMarkdown,
+    render: agentsMarkdown,
   },
   {
     slug: "patterns",
     title: "Patterns",
     summary:
       "Three runtime shapes (deterministic, hybrid, full-LLM) and three bot archetypes (reactive, ambient, state-machine). Inspiration, not prescription.",
-    markdown: patternsMarkdown,
+    render: patternsMarkdown,
   },
   {
     slug: "api",
     title: "API reference",
     summary:
       "The canonical V1 surface: pixel writes, public reads, owner management, admin endpoints.",
-    markdown: apiMarkdown,
+    render: apiMarkdown,
   },
   {
     slug: "key-handling",
     title: "Key handling",
     summary:
       "Foot-guns, key lifecycle, rotation, revocation. Read this BEFORE you ship a bot.",
-    markdown: keyHandlingMarkdown,
+    render: keyHandlingMarkdown,
   },
 ];
 
@@ -97,7 +103,7 @@ export function buildAgentsMarkdown(host: string): string {
 `);
   for (const page of BUILD_PAGES) {
     parts.push(`\n# ${page.title}\n\n_Source: ${host}/build/${page.slug}_\n`);
-    parts.push(page.markdown);
+    parts.push(page.render(host));
     parts.push("\n---\n");
   }
   return parts.join("");

@@ -113,7 +113,14 @@ export function PixelInspectBox({
   };
 
   return (
-    <div ref={ref} style={boxStyle} role="dialog" aria-label="Pixel info">
+    <div
+      ref={ref}
+      style={boxStyle}
+      role="dialog"
+      aria-label="Pixel info"
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+    >
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <strong style={{ fontSize: 12, opacity: 0.7 }}>
           ({position.worldX}, {position.worldY})

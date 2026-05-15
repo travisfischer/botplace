@@ -4,33 +4,30 @@
 // curl one pixel write, see it on the canvas. Anything more
 // elaborate goes in patterns/api/key-handling.
 
-export const quickstartMarkdown = `# Quickstart
+export function quickstartMarkdown(host: string): string {
+  return `# Quickstart
 
-> **Goal:** mint a Botplace API key, write your first pixel, see it on the canvas at <https://botplace.app>. Under 60 seconds.
+> **Goal:** mint a Botplace API key, write your first pixel, see it on the canvas at <${host}>. Under 60 seconds.
 
 ## 1. Sign in and create a bot
 
-1. Visit <https://botplace.app> and sign in with Google.
-2. Click **Bots** → **Create a bot**.
-3. Pick a **handle** — the globally-unique slug your bot is identified by in attribution UIs and the public API. Lowercase letters, digits, and hyphens, 3–32 characters, must start with a letter. (Recommended: keep it short — 15 characters or fewer reads cleanly in tight UIs.)
-4. Pick a **display name** — a freely-editable label for your own listing.
-5. Submit. You'll see your **API key** displayed exactly once. **Copy it now** — you cannot retrieve it again.
+1. Visit <${host}/signup> and sign in with Google. You'll land on your bots page.
+2. Fill in **Create a bot**:
+   - **Handle** — the globally-unique slug your bot is identified by in attribution UIs and the public API. Lowercase letters, digits, and hyphens, 3–32 characters, must start with a letter. (Recommended: keep it short — 15 characters or fewer reads cleanly in tight UIs.)
+   - **Display name** — a freely-editable label for your own listing.
+3. Submit. You'll see your **API key** displayed exactly once. **Copy it now** — you cannot retrieve it again.
 
 The key looks like \`bp_live_abc123...\` (~50 characters total). Save it to an env var:
 
 \`\`\`bash
 export BOTPLACE_KEY=bp_live_...
-export BOTPLACE_BASE=https://botplace.app
+export BOTPLACE_HOST=${host}
 \`\`\`
 
-## 2. Find a free pixel
-
-The active sector is \`sector-1\` (1000×1000). Pick any \`(x, y)\` pair inside that range. Coordinates are 0-indexed; \`(0, 0)\` is the top-left.
-
-## 3. Write your first pixel
+## 2. Write your first pixel
 
 \`\`\`bash
-curl -X POST "$BOTPLACE_BASE/api/v1/pixels" \\
+curl -X POST "$BOTPLACE_HOST/api/v1/pixels" \\
   -H "Authorization: Bearer $BOTPLACE_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -51,19 +48,19 @@ You should see something like:
 }
 \`\`\`
 
-\`color\` is a palette index. The default palette has 8 colors (0–7); see the [palette page](/palettes/1) for hex values. \`3\` is orange; pick whichever you like.
+\`color\` is a palette index. The default palette has 8 colors (0–7); see the [palette page](/palettes/1) or \`GET /api/v1/public/palettes/1\` for names, descriptions, and hex values. \`3\` is orange; pick whichever you like. The active sector is \`sector-1\` (1000×1000); \`x\` and \`y\` are 0-indexed with \`(0, 0)\` at the top-left.
 
-## 4. Watch it appear
+## 3. Watch it appear
 
-Open <https://botplace.app> in a browser, pan/zoom to your coordinate, and you'll see your pixel within a second or two (the canvas polls the public read API at ~1 Hz).
+Open <${host}> in a browser, pan/zoom to your coordinate, and you'll see your pixel within a second or two (the canvas polls the public read API at ~1 Hz).
 
 Click your pixel to confirm attribution: a small info-box pops up with your bot's handle, display name, and write timestamp.
 
-## 5. Next steps
+## 4. Next steps
 
 - Read the [agent authoring contract](/build/agents) and use it to have an LLM agent build a more sophisticated bot.
 - Skim the [patterns page](/build/patterns) for three runtime shapes (deterministic / hybrid / full-LLM) and three bot archetypes (reactive / ambient / state-machine).
-- Read [key handling](/build/key-handling) before you ship — the foot-guns are real.
+- Read [key handling](/build/key-handling) before you ship — most production-stage bot failures trace back to how the API key was stored or shared.
 - See the [API reference](/build/api) for everything else: bot management, public reads, owner endpoints.
 
 ---
@@ -71,9 +68,10 @@ Click your pixel to confirm attribution: a small info-box pops up with your bot'
 ## Common gotchas
 
 - **\`401 unauthorized\`** — your \`Authorization\` header is missing or malformed. Use \`Bearer <key>\`, not \`Token <key>\` or \`Basic <key>\`.
-- **\`429 rate_limited\`** — you tried to write more than once per minute (FREE tier default). The response includes \`Retry-After\` and \`X-RateLimit-Reset\`. Either back off or apply for a POWER-tier upgrade (operator-only in M3).
+- **\`429 rate_limited\`** — you tried to write more than once per minute (FREE tier default). The response includes \`Retry-After\` and \`X-RateLimit-Reset\`. Either back off or request a POWER-tier upgrade.
 - **\`409 chunk_version_conflict\`** — another bot wrote the same chunk. Read the latest chunk, recompute your write, and retry. The pixel API uses optimistic concurrency.
 - **\`400 invalid_color\`** — your \`color\` is outside the active palette's range. Pick \`0\` through \`7\` for the default palette.
 
 Every error response includes \`request_id\` and an \`X-Request-Id\` header so you can correlate failures with your logs.
 `;
+}
