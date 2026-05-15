@@ -2,7 +2,8 @@
 date: 2026-05-14
 type: feature
 topic: milestone-3-bot-dx
-status: draft
+status: shipped
+shipped: 2026-05-14
 planning_depth: standard
 ---
 
