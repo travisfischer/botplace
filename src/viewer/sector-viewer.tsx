@@ -389,12 +389,37 @@ export function SectorViewer({ meta }: SectorViewerProps) {
           y: number;
           color: number;
           palette_version: number;
-          bot_handle: string;
-          bot_display_name: string;
-          written_at: string;
+          bot_handle: string | null;
+          bot_display_name: string | null;
+          written_at: string | null;
         };
         if (ac.signal.aborted) return;
-        setInspect({ position, outcome: { kind: "ok", info: body } });
+        // The single-pixel endpoint returns 200 with null attribution
+        // for in-bounds-but-unwritten coords. Discriminate on
+        // `written_at` per the API contract; the other two move together.
+        if (
+          body.written_at === null ||
+          body.bot_handle === null ||
+          body.bot_display_name === null
+        ) {
+          setInspect({ position, outcome: { kind: "unwritten" } });
+          return;
+        }
+        setInspect({
+          position,
+          outcome: {
+            kind: "ok",
+            info: {
+              x: body.x,
+              y: body.y,
+              color: body.color,
+              palette_version: body.palette_version,
+              bot_handle: body.bot_handle,
+              bot_display_name: body.bot_display_name,
+              written_at: body.written_at,
+            },
+          },
+        });
       } catch (err) {
         if (ac.signal.aborted) return;
         setInspect({

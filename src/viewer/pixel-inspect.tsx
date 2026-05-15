@@ -41,6 +41,7 @@ export interface PixelClickPosition {
 
 export type PixelInspectFetchOutcome =
   | { kind: "ok"; info: PixelInspectInfo }
+  | { kind: "unwritten" }
   | { kind: "not_found" }
   | { kind: "error"; message: string };
 
@@ -162,6 +163,11 @@ function PixelInspectBody({
 }) {
   if (outcome === "loading") {
     return <p style={{ margin: "8px 0 0", opacity: 0.7 }}>Loading…</p>;
+  }
+  if (outcome.kind === "unwritten") {
+    return (
+      <p style={{ margin: "8px 0 0", opacity: 0.7 }}>No writes.</p>
+    );
   }
   if (outcome.kind === "not_found") {
     return (
