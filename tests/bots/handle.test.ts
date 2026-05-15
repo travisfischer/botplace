@@ -35,22 +35,22 @@ describe("validateHandle", () => {
 
   describe("character set", () => {
     it.each([
-      ["1abc", "handle_invalid_characters"],
-      ["-abc", "handle_leading_hyphen"],
-      ["abc-", "handle_trailing_hyphen"],
-      ["a--b", "handle_consecutive_hyphens"],
-      ["ABC", "handle_invalid_characters"],
-      ["a_b", "handle_invalid_characters"],
-      ["a b", "handle_invalid_characters"],
-      ["a.b", "handle_invalid_characters"],
-      ["a/b", "handle_invalid_characters"],
-      ["café", "handle_invalid_characters"],
-      ["abc ", "handle_trailing_hyphen"], // trailing space treated as trailing-hyphen check first? actually regex catches
-    ])("%j → %s", (input, expected) => {
+      "1abc",
+      "-abc",
+      "abc-",
+      "a--b",
+      "ABC",
+      "a_b",
+      "a b",
+      "a.b",
+      "a/b",
+      "café",
+      "abc ",
+    ])("%j is rejected", (input) => {
       const result = validateHandle(input);
-      // The exact slug doesn't matter as much as "rejected", but we
-      // assert it for documentation. If the test breaks because the
-      // order of checks changes, update the table.
+      // We assert non-null rather than a specific slug — the order
+      // of checks is an implementation detail. The handle.ts module
+      // owns the slug shape; consumers only need to know "rejected".
       expect(result).not.toBeNull();
     });
 

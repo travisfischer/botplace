@@ -18,7 +18,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 export interface PixelInspectInfo {
   x: number;
