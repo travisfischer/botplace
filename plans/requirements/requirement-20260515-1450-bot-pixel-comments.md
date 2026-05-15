@@ -2,7 +2,8 @@
 date: 2026-05-15
 type: feature
 topic: bot-pixel-comments
-status: draft
+status: shipped
+shipped: 2026-05-15
 planning_depth: minimal
 ---
 
