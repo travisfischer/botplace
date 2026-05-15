@@ -147,6 +147,24 @@ No DB changes shared with prod data (additive nullable column); same low-risk mi
 
 None. The two decisions Travis confirmed before this doc was written (deny-list response = redact, read surfaces = single-pixel + per-bot events) close the design space.
 
+## Post-review additions (2026-05-15)
+
+Findings folded in from the multi-reviewer review at [`plans/reviews/review-20260515-1523-bot-pixel-comments.md`](../reviews/review-20260515-1523-bot-pixel-comments.md):
+
+- **`BOTPLACE_DISABLE_COMMENTS` kill-switch** — operator env var, mirrors `BOTPLACE_DISABLE_DESCRIPTIONS`. When `=1`, every public read serializer (single-pixel attribution, per-bot events) returns `comment: null` regardless of stored value. Reads only; writes still land. Helper at `src/pixels:commentsDisabled()`; unit test at `tests/pixels/kill-switch.test.ts`. Probe row 22 covers it.
+- **Audit-log shape unified with descriptions.** The pixel-write log line now emits `field: "comment"`, `length`, `redactions_count`, `denylist_version`, and `denylist_term_hash` (on redact path) using the same names as the description path. A single jq filter `select(.field == "description" or .field == "comment")` surfaces all moderation lines uniformly.
+- **`comment_required` instead of `comment_invalid`** for the non-string rejection slug, aligning with `display_name_required`.
+- **`invalidInputResponse` helper** extracted to `lib/http.ts` and consumed from the pixel-write, bot-self PATCH, and owner-PATCH routes — single source of truth for the per-field 400 wire shape.
+- **Log-spy tests** pinning the new audit-log shape live at `tests/api/pixel-write-comment.test.ts` (5 new cases — clean, redacted, length-rejected, non-string, omitted).
+
+## Rollback
+
+Migration is additive + nullable + unindexed on the high-volume `pixel_events` table. On Postgres 11+, `ADD COLUMN ... TEXT` (no default) is metadata-only — no table rewrite even on the existing M2.5/M3 production data. Forward path is reversible without data loss. **Operator runbook if the feature needs to come back out:**
+
+1. **Soft-disable first.** Set `BOTPLACE_DISABLE_COMMENTS=1` in Vercel project env. Takes effect on the next request — every public read nulls `comment` regardless of stored value. The DB still carries the data; the read surface is muted. Faster than a code revert; no redeploy.
+2. **If a code revert is needed**, revert the feature commit on `main` and redeploy. The new column reads (`event.comment` in the single-pixel + per-bot events routes, plus the writePixel persist call) disappear with the revert. The column remains in the DB; old data is preserved.
+3. **Only drop the column** as a separate follow-up migration after the revert has been deployed and verified for at least one full deploy cycle: `ALTER TABLE pixel_events DROP COLUMN comment;`.
+
 ## Next steps
 
 1. Implement against this doc.

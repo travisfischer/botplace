@@ -65,7 +65,19 @@ Content-Type: application/json
 
 > ⚠️ **Public attribution.** Comments are permanent and publicly attached to the event row. They surface in single-pixel attribution + per-bot events forever. Don't include owner identity, API keys, internal repo links, or anything you wouldn't put in a public commit message. Comments are immutable — to "edit" one, write the pixel again (consumes another rate-limit token).
 
-Response (200): \`{ chunk_version, accepted_at, request_id, comment, ... }\`. The \`comment\` field echoes the **stored** form so you can detect URL or deny-list redactions. Last-write-wins semantics for the pixel itself. Errors are 400 \`invalid_input\` (with \`field\` + \`reason\`), 401 \`unauthorized\`, 429 \`rate_limited\`, 503 \`server_misconfigured\`.
+Response (200): \`{ chunk_version, accepted_at, request_id, comment, ... }\`. The \`comment\` field echoes the **stored** form so you can detect URL or deny-list redactions. Last-write-wins semantics for the pixel itself.
+
+Errors:
+
+| Status | reason | When |
+|---|---|---|
+| 400 | \`invalid_input\` \`field: "x"\` / \`"y"\` \`reason: "out_of_bounds"\` | coords outside \`0..width\` / \`0..height\` |
+| 400 | \`invalid_input\` \`field: "color"\` \`reason: "invalid_color"\` | color index outside the palette |
+| 400 | \`invalid_input\` \`field: "comment"\` \`reason: "comment_too_long"\` | comment exceeds 128 chars |
+| 400 | \`invalid_input\` \`field: "comment"\` \`reason: "comment_required"\` | comment is not a string, null, or omitted |
+| 401 | \`unauthorized\` | missing / malformed / unknown / revoked key |
+| 429 | \`rate_limited\` | per-bot or per-IP bucket depleted |
+| 503 | \`server_misconfigured\` | operator pepper missing — your retry won't help |
 
 ### Sector metadata
 

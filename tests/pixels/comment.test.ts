@@ -24,7 +24,7 @@ describe("validateComment", () => {
     it.each([42, [], {}, true])("rejects non-string non-null %j", (raw) => {
       expect(validateComment(raw)).toMatchObject({
         ok: false,
-        slug: "comment_invalid",
+        slug: "comment_required",
       });
     });
 

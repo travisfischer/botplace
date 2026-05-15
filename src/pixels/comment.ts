@@ -34,7 +34,7 @@ import {
   redactUrls,
 } from "@/lib/moderation";
 
-export type CommentErrorSlug = "comment_invalid" | "comment_too_long";
+export type CommentErrorSlug = "comment_required" | "comment_too_long";
 
 export type CommentValidationResult =
   | {
@@ -67,7 +67,7 @@ export function validateComment(raw: unknown): CommentValidationResult {
   if (typeof raw !== "string") {
     return {
       ok: false,
-      slug: "comment_invalid",
+      slug: "comment_required",
       message: "`comment` must be a string, null, or omitted",
     };
   }

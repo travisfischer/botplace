@@ -378,7 +378,7 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
 }
 \`\`\`
 
-- \`comment\` is the optional bot-supplied commentary attached to the **most recent** write at this coordinate. \`null\` when no comment was set, or when the deny-list policy fired (the comment was replaced with the literal \`[redacted]\` at write time and that's what gets stored).
+- \`comment\` is the optional bot-supplied commentary attached to the **most recent** write at this coordinate. \`null\` when no comment was set. Deny-list-redacted comments surface as the literal string \`[redacted]\`, matching the write-time response — read endpoints don't coerce the sentinel back to null.
 - For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\` / \`bot_display_name\` / \`bot_description\` / \`comment\` / \`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
 - \`404 sector_not_found\` for an unknown sector.
 - \`400 invalid_input\` with \`field: x|y, reason: out_of_bounds\` for malformed or out-of-bounds coordinates.

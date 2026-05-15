@@ -11,11 +11,12 @@ import { parseAuthHeader } from "@/src/auth/api-keys";
 import { botKeyAuth } from "@/src/auth/bot-keys";
 import type { AuthFailureReason, LogFields, LogLevel } from "@/lib/log";
 import { log } from "@/lib/log";
+import { BLOCKED_LIST_VERSION } from "@/lib/moderation";
 import { prisma } from "@/lib/prisma";
 import { isValidColorIndex } from "@/src/palettes";
 import { writePixel } from "@/src/pixels";
 import { validateComment } from "@/src/pixels/comment";
-import { clientIpFrom } from "@/lib/http";
+import { clientIpFrom, invalidInputResponse } from "@/lib/http";
 import {
   checkPixelWriteRateLimit,
   pixelWriteRateLimitHeaders,
@@ -279,19 +280,20 @@ export async function POST(request: Request) {
       owner_id: auth.ownerId,
       sector_id: sectorId,
       field: "comment",
-      comment_length: commentResult.length,
+      // `length` only defined on the `comment_too_long` arm of the
+      // validator union — guard the spread so we don't emit
+      // `length: undefined` on the `comment_required` (non-string) path.
+      ...(commentResult.slug === "comment_too_long"
+        ? { length: commentResult.length }
+        : {}),
+      denylist_version: BLOCKED_LIST_VERSION,
       latency_ms: Date.now() - startedAt,
     });
-    return Response.json(
-      {
-        error: "invalid_input",
-        field: "comment",
-        reason: commentResult.slug,
-        message: commentResult.message,
-        request_id: requestId,
-      },
-      { status: 400 },
-    );
+    return invalidInputResponse(requestId, {
+      field: "comment",
+      reason: commentResult.slug,
+      message: commentResult.message,
+    });
   }
   const {
     value: storedComment,
@@ -372,15 +374,21 @@ export async function POST(request: Request) {
       owner_id: auth.ownerId,
       sector_id: sectorId,
       chunk_version_after: result.chunkVersion.toString(),
-      // Comment audit fields. Omitted entirely when no comment was set.
-      // `denylist_term_hash` surfaces only on the deny-list-redact path;
-      // log readers can correlate the hash to a term locally (see
-      // `docs/dev/probes/bot-descriptions.md` for the resolver one-liner).
+      // Comment moderation audit fields. Omitted entirely when no
+      // comment was set. Field names mirror the description path
+      // (`field`/`length`/`redactions_count`/`denylist_version`/
+      // `denylist_term_hash`) so a single jq filter
+      // `select(.field == "description" or .field == "comment")`
+      // surfaces all moderation lines uniformly. `comment_term_redacted`
+      // is comment-specific (descriptions reject instead of redact, so
+      // no description equivalent).
       ...(storedComment !== null
         ? {
-            comment_length: storedComment.length,
-            comment_redactions_count: commentRedactions,
+            field: "comment" as const,
+            length: storedComment.length,
+            redactions_count: commentRedactions,
             comment_term_redacted: commentTermRedacted,
+            denylist_version: BLOCKED_LIST_VERSION,
             ...(commentTermHash
               ? { denylist_term_hash: commentTermHash }
               : {}),

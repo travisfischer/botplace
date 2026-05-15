@@ -14,6 +14,7 @@
 // Rate-limit: owner-write bucket (same as `bot:create`, `pat:mint`),
 // not the bot-self write bucket.
 
+import { invalidInputResponse } from "@/lib/http";
 import { log } from "@/lib/log";
 import {
   applyOwnerWriteRateLimit,
@@ -63,16 +64,12 @@ export async function PATCH(
         bot_id: id,
         unknown_field: key,
       });
-      return Response.json(
-        {
-          error: "invalid_input",
-          field: key,
-          reason: "unknown_field",
-          message: `Unknown field \`${key}\``,
-          request_id: ctx.requestId,
-        },
-        { status: 400, headers: rl.headers },
-      );
+      return invalidInputResponse(ctx.requestId, {
+        field: key,
+        reason: "unknown_field",
+        message: `Unknown field \`${key}\``,
+        headers: rl.headers,
+      });
     }
   }
 
@@ -124,18 +121,19 @@ export async function PATCH(
           ? result.rejection.termHash
           : undefined,
     });
-    return Response.json(
-      status === 404
-        ? { error: "bot_not_found", request_id: ctx.requestId }
-        : {
-            error: "invalid_input",
-            field: "description",
-            reason: slug,
-            message,
-            request_id: ctx.requestId,
-          },
-      { status, headers: rl.headers },
-    );
+    if (status === 404) {
+      return Response.json(
+        { error: "bot_not_found", request_id: ctx.requestId },
+        { status: 404, headers: rl.headers },
+      );
+    }
+    return invalidInputResponse(ctx.requestId, {
+      field: "description",
+      reason: slug,
+      message,
+      status,
+      headers: rl.headers,
+    });
   }
 
   log("info", {

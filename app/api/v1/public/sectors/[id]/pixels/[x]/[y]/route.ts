@@ -40,6 +40,7 @@ import {
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
 import { descriptionsDisabled } from "@/src/bots";
+import { commentsDisabled } from "@/src/pixels";
 import { loadSectorMeta } from "@/src/sectors";
 
 const CACHE_CONTROL = "public, s-maxage=2, stale-while-revalidate=10";
@@ -219,7 +220,7 @@ export async function GET(
         bot_handle: event.bot.handle,
         bot_display_name: event.bot.displayName,
         bot_description: descriptionsDisabled() ? null : event.bot.description,
-        comment: event.comment,
+        comment: commentsDisabled() ? null : event.comment,
         written_at: event.createdAt.toISOString(),
         request_id: requestId,
       },
