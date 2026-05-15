@@ -56,7 +56,7 @@ The pure modules (`chunk-cache`, `poll-loop`, `pan-zoom`, `viewer-fetch`) have u
 ## Why these choices
 
 ### Polling, not realtime
-The MVP brainstorm explicitly defers realtime to M5. Polling at 1Hz with manifest-diff lets the CDN edge absorb most reads (a viewer ticking every second hits cached responses ~99% of the time), and it's a prerequisite for any realtime measurement we'd do later (we can't decide if SSE/WebSocket is worth it without knowing the polling baseline).
+Realtime is deferred indefinitely — the original M5 "realtime decision" milestone has been de-scoped from the MVP until usage justifies it. Polling at 1Hz with manifest-diff lets the CDN edge absorb most reads (a viewer ticking every second hits cached responses ~99% of the time), and it's a prerequisite for any realtime measurement we'd do later (we can't decide if SSE/WebSocket is worth it without knowing the polling baseline).
 
 ### Manifest omits unwritten chunks (IM-1)
 A fresh sector has zero chunk rows; a fully-written 1000² sector has 100 rows. Omitting unwritten chunks keeps the manifest payload small (~5KB max) and makes "never written" an unambiguous signal. The viewer fills unwritten regions with the sector's `default_color` (palette index 0) before any chunks paint.

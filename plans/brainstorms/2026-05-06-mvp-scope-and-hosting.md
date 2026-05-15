@@ -6,9 +6,9 @@ status: adopted
 
 # Brainstorm: MVP Scope and Hosting
 
-## Status (as of 2026-05-11)
+## Status (as of 2026-05-15)
 
-The recommendations in this brainstorm were adopted and converted into requirements. Execution is well underway — Milestones 0, 1 (plus M1 polish), and 2 are shipped; M3–M5 still pending.
+The recommendations in this brainstorm were adopted and converted into requirements. Milestones 0, 1 (plus M1 polish), 2, 2.5, and 3 are all shipped. **Milestones 4 and 5 are de-scoped from the MVP** — see the rationale on each section below.
 
 **Shipped:**
 
@@ -18,8 +18,10 @@ The recommendations in this brainstorm were adopted and converted into requireme
 - **Milestone 1 — Bot Registration, Pixel API, and Event Log** → [requirement](../requirements/requirement-20260508-1121-milestone-1-bot-registration-and-pixel-api.md). Auth.js v5 + Google OAuth, HMAC-SHA-256 + pepper credentials, lazy-allocated chunked canvas state, append-only `PixelEvent` log, Upstash token-bucket rate limiting (with in-process memory dev fallback), structured JSON logs, atomic key rotation, admin-revoke endpoint. End-to-end verified in prod.
 - **M1 Polish — defense-in-depth, tests, CI, operator artifacts** → [requirement](../requirements/requirement-20260508-1900-m1-polish-and-defense-in-depth.md). Tagged auth resolvers, full credential-lifecycle audit trail, pixel-write-tx + auth-invariants tests, GitHub Actions CI, owner-mutation rate limits, `pnpm bot:*` / `pnpm pat:*` shell wrappers, admin doc, probe markdowns, `pnpm events:export`.
 - **Milestone 2 — Public Canvas Viewer** → [requirement](../requirements/requirement-20260509-1711-milestone-2-public-viewer.md). Three public read endpoints under `/api/v1/public/...` with CDN edge caching, 1-Hz polling viewer with manifest-diff, Canvas-2D + CSS pan/zoom, mobile parity, Vercel Firewall rules, agent-native helpers (`pnpm sector:create-probe`, `pnpm dev:seed-bot`). End-to-end verified in prod 2026-05-11. The bot API got matching manifest + ETag primitives so agents can mirror sectors without going through the human read path.
+- **Milestone 2.5 — Power Tier and Launch Bots** → [requirement](../requirements/requirement-20260512-1451-m2.5-power-tier-and-launch-bots.md). Operator-side launch bots drawing simple patterns so first visitors see movement on the canvas.
+- **Milestone 3 — Bot Developer Experience** → [requirement](../requirements/requirement-20260514-1530-milestone-3-bot-dx.md). API docs, Python starter, `AGENTS.md` for coding agents, viewer + owner-UI polish, signed-in flows.
 
-**Pending (Milestones 3–5):** no requirements docs yet. Bot DX (M3), ops hardening (M4), realtime decision (M5). M2.5 demo bots (operator-side, drawing simple patterns so first visitors see movement) sit between M2 and M3.
+**De-scoped (originally Milestones 4–5):** ops hardening (M4) and the realtime upgrade decision (M5) are directionally good ideas but premature. We need to play with the system as it stands and find the core nugget of the shape of this thing before hardening or optimizing. Revisit once real usage tells us what actually needs hardening or whether realtime is worth the complexity.
 
 **Open questions resolved 2026-05-08** (see Resolved Decisions section below): Redis provider, palette selection method, bot registration identity, write semantics, and starter-bot format are all decided. The starter palette landed as DawnBringer's 8-color set in M1, with the registry slot for future tier rollouts captured but unbuilt.
 
@@ -280,7 +282,11 @@ Exit criteria:
 
 **Decision (2026-05-08): starter format = Markdown docs + one Python script + an `AGENTS.md` file.** This is the smallest set that covers humans (docs), scripts (Python is the universal floor), and coding agents (`AGENTS.md` is the cross-platform convention). Per-platform polish — Claude skill, Codex skill, OpenAI agent example — moves to Possible Future Enhancements and gets prioritized once we see which platforms users actually arrive on.
 
-### Milestone 4: Operational Hardening
+### Milestone 4: Operational Hardening — De-scoped (2026-05-15)
+
+**Status: De-scoped from the MVP.** Directionally a good idea, but premature. The system needs to be played with first to find the core nugget of its shape before we start hardening or optimizing. Revisit once real usage points at specific operational pain — at which point this section becomes the starting list, not a commitment to deliver all of it. Some pieces already landed opportunistically in M1 / M1-polish (admin revoke endpoint, structured JSON logs, `pnpm events:export`), so a future revisit will scope to whatever's still missing.
+
+Original scope, for reference:
 
 Goal: keep the first public version stable under small real traffic.
 
@@ -296,7 +302,11 @@ Exit criteria:
 - Canvas current state can be recovered from events.
 - Slow or failing APIs are visible before users report them.
 
-### Milestone 5: Realtime Upgrade Candidate
+### Milestone 5: Realtime Upgrade Candidate — De-scoped (2026-05-15)
+
+**Status: De-scoped from the MVP.** This was already a measure-first milestone ("decide whether the viewer needs realtime") and the answer right now is "no, and we don't yet know the shape that would justify it." 1-Hz polling against CDN-cached manifests is fine for the traffic the canvas will see in this exploratory phase. Revisit only if and when usage data, or a concrete product reason, calls for it — and treat the section below as a starting point, not a commitment.
+
+Original scope, for reference:
 
 Goal: decide whether the viewer needs realtime infrastructure yet.
 
