@@ -22,20 +22,30 @@ interface BucketState {
 }
 
 /**
- * Token bucket with `capacity` max tokens and one refill every
- * `refillIntervalMs`. Fresh buckets start at capacity (first request always
- * succeeds). The `now` injection is for tests; production callers omit it
- * and get `Date.now` (looked up at call time, not at construction time, so
+ * Token bucket with `capacity` max tokens. Each refill interval adds
+ * `refillRate` tokens (default 1, matching the historical "drip refill"
+ * semantics of the per-bot / per-IP write buckets). Fresh buckets start
+ * at capacity (first request always succeeds).
+ *
+ * For "N requests per second sustained" semantics, set
+ * `refillRate: N, refillIntervalMs: 1_000`.
+ *
+ * The `now` injection is for tests; production callers omit it and get
+ * `Date.now` (looked up at call time, not at construction time, so
  * `vi.useFakeTimers()` + `vi.setSystemTime()` work correctly).
  */
 export class MemoryTokenBucket implements Limiter {
   private readonly buckets = new Map<string, BucketState>();
+  private readonly refillRate: number;
 
   constructor(
     private readonly capacity: number,
     private readonly refillIntervalMs: number,
     private readonly now: () => number = () => Date.now(),
-  ) {}
+    refillRate?: number,
+  ) {
+    this.refillRate = refillRate ?? 1;
+  }
 
   async limit(key: string): Promise<LimiterResult> {
     const t = this.now();
@@ -48,7 +58,10 @@ export class MemoryTokenBucket implements Limiter {
     const elapsed = t - state.lastRefillMs;
     if (elapsed >= this.refillIntervalMs) {
       const refills = Math.floor(elapsed / this.refillIntervalMs);
-      state.tokens = Math.min(this.capacity, state.tokens + refills);
+      state.tokens = Math.min(
+        this.capacity,
+        state.tokens + refills * this.refillRate,
+      );
       state.lastRefillMs += refills * this.refillIntervalMs;
     }
 

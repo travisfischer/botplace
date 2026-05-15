@@ -47,9 +47,18 @@ import {
 type Duration = `${number} ${"ms" | "s" | "m" | "h" | "d"}`;
 
 interface BucketConfig {
-  /** Max tokens the bucket can hold. */
+  /** Max tokens the bucket can hold (also the burst capacity). */
   capacity: number;
-  /** ms between automatic refill events (each adds 1 token). */
+  /**
+   * Tokens added per refill interval. Defaults to `1` if absent — that's
+   * "drip refill: 1 token every refillInterval."
+   *
+   * Set explicitly when the bucket should refill faster than 1/interval.
+   * For a "N requests per second sustained" bucket, set
+   * `refillRate: N, refillIntervalMs: 1_000`.
+   */
+  refillRate?: number;
+  /** ms between automatic refill events. */
   refillIntervalMs: number;
   /** Upstash duration string equivalent, e.g. "60 s" or "1 s". */
   refillIntervalString: Duration;
@@ -67,7 +76,7 @@ const WRITE_BOT: BucketConfig = {
 // POWER bot can burst up to 60 writes immediately and then sustain 60
 // writes/min indefinitely. POWER also bypasses the per-IP bucket (see
 // checkPixelWriteRateLimit); both are M2.5 product features behind
-// `Bot.rateTier`.
+// `Bot.rateTier`. (refillRate omitted → 1 token/sec, matches intent.)
 const WRITE_BOT_POWER: BucketConfig = {
   capacity: 60,
   refillIntervalMs: 1_000,
@@ -80,8 +89,14 @@ const WRITE_IP: BucketConfig = {
   refillIntervalString: "60 s",
   prefix: "botplace:rl:ip",
 };
+// Per-credential read bucket: 60 reads/sec sustained, burst 60. The
+// authenticated read endpoints (chunks, manifest, single-pixel,
+// snapshot, sectors) all share this. Same numbers as PUBLIC_READ;
+// per-credential because authenticated callers can be louder before
+// hitting abusive territory.
 const READ: BucketConfig = {
   capacity: 60,
+  refillRate: 60,
   refillIntervalMs: 1_000,
   refillIntervalString: "1 s",
   prefix: "botplace:rl:read",
@@ -96,16 +111,24 @@ const OWNER_WRITE: BucketConfig = {
   refillIntervalString: "2 s",
   prefix: "botplace:rl:owner_write",
 };
-// Per-IP cap on anonymous public reads (M2 viewer endpoints). Sized
-// generously so a legitimate viewer polling the manifest at 1Hz + an
-// occasional chunk fetch never approaches the ceiling, while a
-// determined scraper opening many paths in parallel does. 60/sec/IP
-// (= 3600/min) is the in-app floor; the higher Vercel Firewall edge
-// rule (600/min/IP per `docs/admin/v1.md`) sits *above* this, not
-// below — i.e. attacks that bypass the edge for any reason still hit
-// this app-side limit. M2 review P1.3.
+// Per-IP cap on anonymous public reads (M2 viewer endpoints). 60 reads/
+// sec sustained, burst 60. Sized generously so a legitimate viewer
+// polling the manifest at 1Hz + chunk fetches per tick + occasional
+// click-to-inspect reads never approaches the ceiling, while a
+// determined scraper opening many paths in parallel does. The higher
+// Vercel Firewall edge rule (600/min/IP per `docs/admin/v1.md`) sits
+// *above* this, not below — attacks that bypass the edge for any
+// reason still hit this app-side limit.
+//
+// History note: between M2 ship and this fix, this bucket effectively
+// behaved as 1 req/sec sustained (with 60 burst) due to a
+// hardcoded-`1`-refillRate bug in `adaptUpstashLimiter`. The
+// configured-vs-actual mismatch surfaced as widespread 429s on the
+// public viewer once the M2.5 launch bots + M3 click-to-inspect added
+// load. Documented in `plans/follow-ups/m3-implementation-followups.md`.
 const PUBLIC_READ: BucketConfig = {
   capacity: 60,
+  refillRate: 60,
   refillIntervalMs: 1_000,
   refillIntervalString: "1 s",
   prefix: "botplace:rl:public_read",
@@ -252,9 +275,17 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 function adaptUpstashLimiter(redis: Redis, cfg: BucketConfig): Limiter {
+  // Upstash signature is `tokenBucket(refillRate, interval, maxTokens)`.
+  // Default refillRate to 1 if absent — matches the historical "drip
+  // refill" semantics used by the per-bot / per-IP write buckets.
+  const refillRate = cfg.refillRate ?? 1;
   const r = new Ratelimit({
     redis,
-    limiter: Ratelimit.tokenBucket(1, cfg.refillIntervalString, cfg.capacity),
+    limiter: Ratelimit.tokenBucket(
+      refillRate,
+      cfg.refillIntervalString,
+      cfg.capacity,
+    ),
     prefix: cfg.prefix,
   });
   return {
@@ -288,7 +319,12 @@ function getLimiters(): LimiterCache {
       read: new FailOpenLimiter(
         "read",
         adaptUpstashLimiter(redis, READ),
-        new MemoryTokenBucket(READ.capacity, READ.refillIntervalMs),
+        new MemoryTokenBucket(
+          READ.capacity,
+          READ.refillIntervalMs,
+          undefined,
+          READ.refillRate,
+        ),
       ),
       publicRead: new FailOpenLimiter(
         "public_read",
@@ -296,6 +332,8 @@ function getLimiters(): LimiterCache {
         new MemoryTokenBucket(
           PUBLIC_READ.capacity,
           PUBLIC_READ.refillIntervalMs,
+          undefined,
+          PUBLIC_READ.refillRate,
         ),
       ),
     };
@@ -317,20 +355,41 @@ function getLimiters(): LimiterCache {
     });
   }
   cached = {
-    bot: new MemoryTokenBucket(WRITE_BOT.capacity, WRITE_BOT.refillIntervalMs),
+    bot: new MemoryTokenBucket(
+      WRITE_BOT.capacity,
+      WRITE_BOT.refillIntervalMs,
+      undefined,
+      WRITE_BOT.refillRate,
+    ),
     botPower: new MemoryTokenBucket(
       WRITE_BOT_POWER.capacity,
       WRITE_BOT_POWER.refillIntervalMs,
+      undefined,
+      WRITE_BOT_POWER.refillRate,
     ),
-    ip: new MemoryTokenBucket(WRITE_IP.capacity, WRITE_IP.refillIntervalMs),
-    read: new MemoryTokenBucket(READ.capacity, READ.refillIntervalMs),
+    ip: new MemoryTokenBucket(
+      WRITE_IP.capacity,
+      WRITE_IP.refillIntervalMs,
+      undefined,
+      WRITE_IP.refillRate,
+    ),
+    read: new MemoryTokenBucket(
+      READ.capacity,
+      READ.refillIntervalMs,
+      undefined,
+      READ.refillRate,
+    ),
     ownerWrite: new MemoryTokenBucket(
       OWNER_WRITE.capacity,
       OWNER_WRITE.refillIntervalMs,
+      undefined,
+      OWNER_WRITE.refillRate,
     ),
     publicRead: new MemoryTokenBucket(
       PUBLIC_READ.capacity,
       PUBLIC_READ.refillIntervalMs,
+      undefined,
+      PUBLIC_READ.refillRate,
     ),
   };
   return cached;

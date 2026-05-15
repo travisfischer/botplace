@@ -62,4 +62,53 @@ describe("MemoryTokenBucket", () => {
     expect((await b.limit("k")).remaining).toBe(0);
     expect((await b.limit("k")).success).toBe(false);
   });
+
+  describe("refillRate", () => {
+    it("defaults to 1 token per interval (drip refill, M2.5 semantics)", async () => {
+      let now = 1_000_000;
+      // Default refillRate via positional-arg omission.
+      const b = new MemoryTokenBucket(60, 1_000, () => now);
+      // Drain.
+      for (let i = 0; i < 60; i++) await b.limit("k");
+      expect((await b.limit("k")).success).toBe(false);
+      // After one interval, exactly one token has refilled.
+      now += 1_000;
+      expect((await b.limit("k")).success).toBe(true);
+      expect((await b.limit("k")).success).toBe(false);
+    });
+
+    it("refillRate=N adds N tokens per interval (PUBLIC_READ semantics)", async () => {
+      let now = 1_000_000;
+      // The actual PUBLIC_READ shape after the M3 hotfix: 60 tokens
+      // capacity, 60 tokens added per second.
+      const b = new MemoryTokenBucket(60, 1_000, () => now, 60);
+      // Drain.
+      for (let i = 0; i < 60; i++) await b.limit("k");
+      expect((await b.limit("k")).success).toBe(false);
+      // After one second, the bucket is fully refilled to capacity.
+      now += 1_000;
+      // Should have 60 tokens ready.
+      for (let i = 0; i < 60; i++) {
+        expect((await b.limit("k")).success).toBe(true);
+      }
+      expect((await b.limit("k")).success).toBe(false);
+    });
+
+    it("refillRate * intervals does not exceed capacity (cap on long idle)", async () => {
+      let now = 1_000_000;
+      const b = new MemoryTokenBucket(60, 1_000, () => now, 60);
+      // Drain to zero.
+      for (let i = 0; i < 60; i++) await b.limit("k");
+      // Idle for 10 intervals — would naively add 600 tokens.
+      now += 10_000;
+      // But capacity is 60, so the very first call after the idle
+      // succeeds and 59 more do too (= one full bucket).
+      let succeeded = 0;
+      for (let i = 0; i < 100; i++) {
+        if ((await b.limit("k")).success) succeeded++;
+        else break;
+      }
+      expect(succeeded).toBe(60);
+    });
+  });
 });
