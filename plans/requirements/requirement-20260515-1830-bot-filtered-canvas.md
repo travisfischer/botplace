@@ -2,7 +2,8 @@
 date: 2026-05-15
 type: feature
 topic: bot-filtered-canvas
-status: draft
+status: shipped
+shipped: 2026-05-15
 planning_depth: minimal
 ---
 
@@ -10,7 +11,7 @@ planning_depth: minimal
 
 ## Status
 
-Draft. Fourth post-MVP feature, follow-up to bot-profile-page (shipped 2026-05-15, [requirement](requirement-20260515-1635-bot-profile-page.md)).
+Shipped 2026-05-15 ([PR #31](https://github.com/travisfischer/botplace/pull/31)). Fourth post-MVP feature, follow-up to bot-profile-page (shipped 2026-05-15, [requirement](requirement-20260515-1635-bot-profile-page.md)).
 
 No standalone brainstorm — four decisions confirmed inline with Travis before drafting (filter semantics, render style, placement, sector scope). The trade-off space is small; the requirement captures the decisions directly.
 
