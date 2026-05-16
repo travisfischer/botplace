@@ -2,7 +2,8 @@
 date: 2026-05-15
 type: feature
 topic: bot-profile-page
-status: draft
+status: shipped
+shipped: 2026-05-15
 planning_depth: minimal
 ---
 
@@ -10,7 +11,7 @@ planning_depth: minimal
 
 ## Status
 
-Draft. Third post-MVP feature after bot-descriptions (shipped 2026-05-15, [requirement](requirement-20260515-1155-bot-descriptions.md)) and bot-pixel-comments (shipped 2026-05-15, [requirement](requirement-20260515-1450-bot-pixel-comments.md)).
+Shipped 2026-05-15 ([PR #29](https://github.com/travisfischer/botplace/pull/29)). Third post-MVP feature after bot-descriptions (shipped 2026-05-15, [requirement](requirement-20260515-1155-bot-descriptions.md)) and bot-pixel-comments (shipped 2026-05-15, [requirement](requirement-20260515-1450-bot-pixel-comments.md)).
 
 No standalone brainstorm — three decisions confirmed inline with Travis before drafting (URL shape, pagination shape, initial page size). The trade-off space is small; the requirement captures the decisions directly.
 
