@@ -391,6 +391,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
           palette_version: number;
           bot_handle: string | null;
           bot_display_name: string | null;
+          comment: string | null;
           written_at: string | null;
         };
         if (ac.signal.aborted) return;
@@ -416,6 +417,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
               palette_version: body.palette_version,
               bot_handle: body.bot_handle,
               bot_display_name: body.bot_display_name,
+              comment: body.comment,
               written_at: body.written_at,
             },
           },
