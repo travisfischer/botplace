@@ -26,12 +26,12 @@ import { randomUUID } from "node:crypto";
 
 import { clientIpFrom } from "@/lib/http";
 import { log } from "@/lib/log";
-import { prisma } from "@/lib/prisma";
 import {
   checkPublicReadRateLimit,
   publicReadRateLimitHeaders,
   publicReadRateLimitResponse,
 } from "@/lib/rate-limit";
+import { loadBotEventsByHandle, type BotEventRow } from "@/src/bots/events";
 import { isValidHandle, validateHandle } from "@/src/bots/handle";
 import { commentsDisabled } from "@/src/pixels";
 
@@ -56,29 +56,27 @@ function parseSince(raw: string | null): Date | null {
 
 /**
  * `?before=<iso>` is the backward-pagination cursor — used by the
- * bot profile page's "Load more" button to walk older history. Same
- * parse shape as `parseSince`; the route handler enforces mutual
- * exclusion with `?since` so callers must pick a direction.
+ * bot profile page's "Load more" button to walk older history.
+ *
+ * Returns:
+ *   - `null` when no `?before=` query param was supplied.
+ *   - `"invalid"` when the param was supplied but did not parse as a
+ *     date (caller should 400 with `reason: "before_invalid"`).
+ *   - `Date` otherwise.
+ *
+ * The asymmetry vs. `parseSince` (which silently drops garbage) is
+ * deliberate: `before` is a paginating cursor — a client constructing
+ * "Load more" off a bad cursor must be told its loop is broken rather
+ * than silently restarted from the head of history.
  */
-function parseBefore(raw: string | null): Date | null {
+function parseBefore(raw: string | null): Date | null | "invalid" {
   if (!raw) return null;
   const t = Date.parse(raw);
-  if (!Number.isFinite(t)) return null;
+  if (!Number.isFinite(t)) return "invalid";
   return new Date(t);
 }
 
-interface EventRow {
-  x: number;
-  y: number;
-  color: number;
-  paletteVersion: number;
-  createdAt: Date;
-  chunkVersionAfter: bigint;
-  sectorId: string;
-  comment: string | null;
-}
-
-function toWire(e: EventRow, suppressComment: boolean): Record<string, unknown> {
+function toWire(e: BotEventRow): Record<string, unknown> {
   return {
     x: e.x,
     y: e.y,
@@ -87,7 +85,7 @@ function toWire(e: EventRow, suppressComment: boolean): Record<string, unknown> 
     accepted_at: e.createdAt.toISOString(),
     chunk_version_after: e.chunkVersionAfter.toString(),
     sector_id: e.sectorId,
-    comment: suppressComment ? null : e.comment,
+    comment: e.comment,
   };
 }
 
@@ -151,6 +149,30 @@ export async function GET(
   const since = parseSince(url.searchParams.get("since"));
   const before = parseBefore(url.searchParams.get("before"));
 
+  if (before === "invalid") {
+    log("warn", {
+      request_id: requestId,
+      path,
+      status: 400,
+      error_slug: "invalid_input",
+      auth_type: "public",
+      latency_ms: Date.now() - startedAt,
+    });
+    return Response.json(
+      {
+        error: "invalid_input",
+        field: "before",
+        reason: "before_invalid",
+        message: "`before` must be an ISO-8601 timestamp",
+        request_id: requestId,
+      },
+      {
+        status: 400,
+        headers: { "X-Request-Id": requestId, ...rlHeaders },
+      },
+    );
+  }
+
   // `since` (catch up forward) and `before` (paginate backward) are
   // mutually exclusive — the cursor is one direction at a time. If
   // both are present, refuse: a caller passing both has a bug in
@@ -180,14 +202,22 @@ export async function GET(
   }
 
   try {
-    // Look up the bot id by handle. If absent, return [] — see
-    // "stale-handle behavior" in the doc comment above.
-    const bot = await prisma.bot.findUnique({
-      where: { handle },
-      select: { id: true },
+    const cursor =
+      since !== null
+        ? { since }
+        : before !== null
+          ? { before }
+          : undefined;
+
+    const { botId, events } = await loadBotEventsByHandle({
+      handle,
+      limit,
+      cursor,
+      suppressComment: commentsDisabled(),
     });
 
-    if (!bot) {
+    if (botId === null) {
+      // Stale-handle behavior — see doc comment above.
       log("info", {
         request_id: requestId,
         path,
@@ -208,26 +238,6 @@ export async function GET(
       });
     }
 
-    const where: Record<string, unknown> = { botId: bot.id };
-    if (since !== null) where.createdAt = { gt: since };
-    else if (before !== null) where.createdAt = { lt: before };
-
-    const rows = (await prisma.pixelEvent.findMany({
-      where: where as never,
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      select: {
-        x: true,
-        y: true,
-        color: true,
-        paletteVersion: true,
-        createdAt: true,
-        chunkVersionAfter: true,
-        sectorId: true,
-        comment: true,
-      },
-    })) as EventRow[];
-
     log("info", {
       request_id: requestId,
       path,
@@ -235,12 +245,11 @@ export async function GET(
       auth_type: "public",
       bot_handle: handle,
       bot_known: true,
-      event_count: rows.length,
+      event_count: events.length,
       latency_ms: Date.now() - startedAt,
     });
 
-    const suppressComment = commentsDisabled();
-    return Response.json(rows.map((r) => toWire(r, suppressComment)), {
+    return Response.json(events.map(toWire), {
       headers: {
         "Cache-Control": CACHE_CONTROL,
         "CDN-Cache-Control": CDN_CACHE_CONTROL,

@@ -26,11 +26,12 @@ Run pre-merge against a preview deploy; rerun the post-deploy subset against pro
 | 14 | Empty bot | Bot with zero writes shows empty state | Create a fresh bot (no pixel writes). Browse `/bots/<new-handle>` → page renders profile header + "No pixel writes yet." in place of the feed. | **no — browser** | pre-merge (preview) |
 | 15 | Reserved-handle protection at create | New handle list rejects at owner-create | `POST /api/v1/bots` with `handle: "new"` (or "edit"/"create"/"settings"/"profile"/"manage"/"account"), PAT-authed → 400 `handle_blocked` or `handle_reserved`. | yes — curl + jq | pre-merge (preview) |
 | 16 | SSR vs hydrate | First paint includes the bot info + first batch; "Load more" pulls subsequent batches client-side | DevTools → Network → reload page → first document response contains the bot's display name + first event's text. Subsequent "Load more" clicks fire fetch requests to `/api/v1/public/bots/<handle>/events?before=...`. | **no — browser DevTools** | pre-merge (preview) |
+| 16b | No prod bot owns a new reserved handle | The 7 new reservations don't strand a real bot at create-time. (Read paths stay open — see probe 19 — but a hypothetical owner couldn't recreate the bot after deletion.) | `psql "$PROD_DATABASE_URL" -c "SELECT handle FROM bots WHERE handle IN ('new','edit','create','settings','profile','manage','account');"` → returns zero rows. | yes — psql | pre-merge (preview) |
 | 17 | Cache headers | Profile page has reasonable cache headers | `curl -I $BOTPLACE_URL/bots/m25-conway` → check `Cache-Control` value. For SSR'd pages with `dynamic = "force-dynamic"`, expect `cache-control: private, no-cache` (page isn't CDN-cached). API endpoints stay cacheable. | yes — curl -I | post-deploy |
 | 18 | Production schema sanity | No new schema changes; reserves the dev-DB drift case | `psql "$PROD_DATABASE_URL" -c "\d pixel_events"` → confirm column set unchanged from prior milestone (no new columns added by this feature). | yes — psql | post-deploy |
 | 19 | Existing handles with reserved names still queryable | The 7 new reservations don't break existing read paths | If any production bot somehow has handle "new" / "edit" / etc. (none do today, but defense-in-depth), `GET /api/v1/public/bots/<that-handle>` and `/bots/<that-handle>` continue to resolve. The reservation only affects create-time, never read paths. | yes — curl | post-deploy |
 
-**Pre-merge subset:** 1–16. **Post-deploy subset:** 17–19.
+**Pre-merge subset:** 1–16, 16b. **Post-deploy subset:** 17–19.
 
 Recipes honor `BOTPLACE_URL`:
 

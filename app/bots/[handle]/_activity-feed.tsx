@@ -10,6 +10,8 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { formatRelative } from "@/lib/format-relative";
+
 export interface FeedEvent {
   x: number;
   y: number;
@@ -66,7 +68,10 @@ export function ActivityFeed(props: FeedProps) {
       if (batch.length < props.initialBatchSize) setHasMore(false);
       // No palette_version in production hits anything but 1 today, but
       // if a future deploy ships a new palette mid-history this picks
-      // it up.
+      // it up. Each fetch is independently try/caught — a single failed
+      // palette must not break the whole batch, since one bad palette
+      // would just fall back to the default swatch color via the
+      // `palette?.[color] ?? "#cccccc"` in `EventRow`.
       const missing = new Set(
         batch
           .map((e) => e.palette_version)
@@ -76,16 +81,21 @@ export function ActivityFeed(props: FeedProps) {
         const fetched: Record<number, readonly string[]> = {};
         await Promise.all(
           Array.from(missing).map(async (v) => {
-            const paletteRes = await fetch(`/api/v1/public/palettes/${v}`);
-            if (paletteRes.ok) {
+            try {
+              const paletteRes = await fetch(`/api/v1/public/palettes/${v}`);
+              if (!paletteRes.ok) return;
               const data = (await paletteRes.json()) as {
                 colors: Array<{ hex: string }>;
               };
               fetched[v] = data.colors.map((c) => c.hex);
+            } catch {
+              // Swallow — fallback color renders.
             }
           }),
         );
-        setPalettes((prev) => ({ ...prev, ...fetched }));
+        if (Object.keys(fetched).length > 0) {
+          setPalettes((prev) => ({ ...prev, ...fetched }));
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load more");
@@ -220,19 +230,3 @@ function EventRow(props: {
   );
 }
 
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diffSec = Math.max(0, Math.round((now - then) / 1000));
-  if (diffSec < 60) return `${diffSec} sec ago`;
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min ago`;
-  const diffHour = Math.round(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} hr ago`;
-  const diffDay = Math.round(diffHour / 24);
-  if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
-  const diffMo = Math.round(diffDay / 30);
-  if (diffMo < 12) return `${diffMo} mo ago`;
-  const diffYr = Math.round(diffMo / 12);
-  return `${diffYr} yr ago`;
-}

@@ -480,6 +480,47 @@ describeIfDb("GET /api/v1/public/bots/:handle/events", () => {
   );
 
   it(
+    "?before=<garbage> returns 400 with reason=before_invalid",
+    { timeout: 30_000 },
+    async () => {
+      const res = await getBotEvents(
+        new Request("http://test/?before=not-a-date"),
+        { params: Promise.resolve({ handle: "m25-conway" }) },
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body).toMatchObject({
+        error: "invalid_input",
+        field: "before",
+        reason: "before_invalid",
+      });
+    },
+  );
+
+  it(
+    "?before=<old-cursor> returning [] confirms cursor walked off end-of-history",
+    { timeout: 30_000 },
+    async () => {
+      const s = await seed();
+      try {
+        await writeAt(s, 1, 1, 2);
+        // Use a cursor older than the Unix epoch — guaranteed to be
+        // older than every event in the table. An empty array is the
+        // signal the activity feed uses to flip `hasMore = false`.
+        const res = await getBotEvents(
+          new Request("http://test/?before=1970-01-01T00:00:00Z"),
+          { params: Promise.resolve({ handle: s.botHandle }) },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as unknown[];
+        expect(body).toEqual([]);
+      } finally {
+        await cleanup(s);
+      }
+    },
+  );
+
+  it(
     "every event row now carries palette_version (new for the profile page's color swatch)",
     { timeout: 30_000 },
     async () => {

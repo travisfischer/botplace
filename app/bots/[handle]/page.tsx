@@ -15,15 +15,18 @@
 // 404 on unknown handle. Matches the bot-detail API endpoint's shape
 // at /api/v1/public/bots/<handle_or_id>.
 
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
-import { prisma } from "@/lib/prisma";
+import { formatRelative } from "@/lib/format-relative";
+import { checkPublicReadRateLimit } from "@/lib/rate-limit";
 import {
   botPublicDetailToJson,
   descriptionsDisabled,
   getBotPublicDetail,
 } from "@/src/bots";
+import { loadBotEventsByHandle } from "@/src/bots/events";
 import { isValidHandle, validateHandle } from "@/src/bots/handle";
 import { getPalette } from "@/src/palettes";
 import { commentsDisabled } from "@/src/pixels";
@@ -41,6 +44,29 @@ interface RouteProps {
 export default async function BotProfilePage({ params }: RouteProps) {
   const { handle } = await params;
 
+  // App-level per-IP floor on the page itself, mirroring the public
+  // events API. Vercel Firewall is the first line at the edge; this
+  // catches anything that bypasses it. App Router pages can't return a
+  // 429 cleanly, so a rate-limit hit renders a soft "Slow down" view
+  // (the underlying limit-unavailable path renders the same — failing
+  // closed on the upstream limiter would lock everyone out).
+  const h = await headers();
+  const ip =
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    h.get("x-real-ip") ??
+    "unknown";
+  const rl = await checkPublicReadRateLimit(ip);
+  if (!rl.ok && rl.reason === "rate_limited") {
+    return (
+      <main style={{ maxWidth: 720, margin: "0 auto", padding: "1.5rem 1rem" }}>
+        <h1>Slow down</h1>
+        <p style={{ color: "#555" }}>
+          Too many requests from this IP. Please retry in a few seconds.
+        </p>
+      </main>
+    );
+  }
+
   // Format check first. Reserved handles are permitted for lookup
   // (matches the events endpoint shape) — only completely-malformed
   // handles bail before we hit the DB.
@@ -52,32 +78,12 @@ export default async function BotProfilePage({ params }: RouteProps) {
   const detail = await getBotPublicDetail({ handle });
   if (!detail) notFound();
 
-  // Fetch the initial batch of events directly. We need the bot's
-  // id (which `getBotPublicDetail` doesn't expose) to query
-  // `pixel_events` by `botId`. One extra lookup, cheap, indexed.
-  const botRow = await prisma.bot.findUnique({
-    where: { handle: detail.handle },
-    select: { id: true },
+  const { events: initialEvents } = await loadBotEventsByHandle({
+    handle: detail.handle,
+    limit: INITIAL_PAGE_SIZE,
+    suppressComment: commentsDisabled(),
   });
-  // botRow can't be null here — getBotPublicDetail just found the row.
-  const initialEvents = botRow
-    ? await prisma.pixelEvent.findMany({
-        where: { botId: botRow.id },
-        orderBy: { createdAt: "desc" },
-        take: INITIAL_PAGE_SIZE,
-        select: {
-          x: true,
-          y: true,
-          color: true,
-          paletteVersion: true,
-          createdAt: true,
-          sectorId: true,
-          comment: true,
-        },
-      })
-    : [];
 
-  const suppressComment = commentsDisabled();
   const suppressDescription = descriptionsDisabled();
   const detailJson = botPublicDetailToJson(detail);
 
@@ -88,7 +94,7 @@ export default async function BotProfilePage({ params }: RouteProps) {
     palette_version: e.paletteVersion,
     accepted_at: e.createdAt.toISOString(),
     sector_id: e.sectorId,
-    comment: suppressComment ? null : e.comment,
+    comment: e.comment,
   }));
 
   // Pre-resolve the palettes referenced by the initial batch + v1 as a
@@ -106,10 +112,16 @@ export default async function BotProfilePage({ params }: RouteProps) {
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "1.5rem 1rem" }}>
       <p style={{ fontSize: 12, color: "#888", marginTop: 0 }}>
-        <Link href="/">← Home</Link>{" "}
-        · <Link href={`/sectors/${feedEvents[0]?.sector_id ?? "sector-1"}`}>
-          View canvas
-        </Link>
+        <Link href="/">← Home</Link>
+        {feedEvents[0] ? (
+          <>
+            {" "}
+            ·{" "}
+            <Link href={`/sectors/${feedEvents[0].sector_id}`}>
+              View canvas
+            </Link>
+          </>
+        ) : null}
       </p>
 
       <header style={{ borderBottom: "1px solid #ddd", paddingBottom: "1rem" }}>
@@ -164,24 +176,3 @@ export default async function BotProfilePage({ params }: RouteProps) {
   );
 }
 
-/**
- * Format a relative time stamp for the profile header. Coarse — month-
- * level for old events, seconds/minutes/hours for recent. The full ISO
- * timestamp lives in the `title` attribute for hover.
- */
-function formatRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diffSec = Math.max(0, Math.round((now - then) / 1000));
-  if (diffSec < 60) return `${diffSec} sec ago`;
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min ago`;
-  const diffHour = Math.round(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} hr ago`;
-  const diffDay = Math.round(diffHour / 24);
-  if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
-  const diffMo = Math.round(diffDay / 30);
-  if (diffMo < 12) return `${diffMo} mo ago`;
-  const diffYr = Math.round(diffMo / 12);
-  return `${diffYr} yr ago`;
-}
