@@ -22,11 +22,12 @@
 //      `bot_id` + `created_at`; we hydrate the bot's `handle` and
 //      `display_name` for the response.
 //
-// Privacy model matches /events: returns `bot_handle`,
+// Privacy model matches /events: returns `bot_id`, `bot_handle`,
 // `bot_display_name`, `bot_description`, and the write's `comment`
 // (the bot's optional commentary on this specific write, post-
 // moderation; `null` if none was set or if it got the deny-list
-// `[redacted]` swap). Never owner_id, api_key_id, request_id, bot_id,
+// `[redacted]` swap). `bot_id` is a stable join key; `bot_handle`
+// is canonical for humans. Never owner_id, api_key_id, request_id,
 // or any other internal identifier.
 
 import { randomUUID } from "node:crypto";
@@ -159,7 +160,9 @@ export async function GET(
         paletteVersion: true,
         createdAt: true,
         comment: true,
-        bot: { select: { handle: true, displayName: true, description: true } },
+        bot: {
+          select: { id: true, handle: true, displayName: true, description: true },
+        },
       },
     });
 
@@ -181,6 +184,7 @@ export async function GET(
           y,
           color: meta.meta.default_color,
           palette_version: meta.meta.palette_version,
+          bot_id: null,
           bot_handle: null,
           bot_display_name: null,
           bot_description: null,
@@ -217,6 +221,7 @@ export async function GET(
         y,
         color: event.color,
         palette_version: event.paletteVersion,
+        bot_id: event.bot.id,
         bot_handle: event.bot.handle,
         bot_display_name: event.bot.displayName,
         bot_description: descriptionsDisabled() ? null : event.bot.description,

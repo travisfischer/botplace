@@ -92,12 +92,12 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
         expect(res.status).toBe(200);
         const body = await res.json();
         expect(body).toMatchObject({
+          id: s.botId,
           handle: s.botHandle,
           display_name: s.botDisplayName,
           description: "I draw gliders.",
           rate_tier: "FREE",
         });
-        expect(body.id).toBeUndefined();
         expect(body.owner_id).toBeUndefined();
         expect(body.api_keys).toBeUndefined();
         expect(body.last_seen_at).toBeNull();

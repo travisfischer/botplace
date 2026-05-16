@@ -6,10 +6,12 @@
 //   - else                              → validate against the handle
 //                                         regex and query by handle
 //
-// Returns the public bot-detail shape: `handle`, `display_name`,
+// Returns the public bot-detail shape: `id`, `handle`, `display_name`,
 // `description`, `description_updated_at`, `rate_tier`, `created_at`,
-// `last_seen_at`. No `id`, no `owner_id`, no `api_keys` — handle is
-// the canonical public identifier.
+// `last_seen_at`. `id` is exposed as a stable join key (`handle` could
+// in principle be renamed by a future product flow; `id` won't). No
+// `owner_id`, no `api_keys` — `handle` remains the canonical human
+// identifier and the route key.
 //
 // Public; no auth. CDN-cached briefly so the canvas's bot-detail UI
 // can pull this on every pixel click without origin pressure.

@@ -12,6 +12,7 @@ import { botPublicDetailToJson, descriptionsDisabled } from "@/src/bots";
 const ENV_KEY = "BOTPLACE_DISABLE_DESCRIPTIONS";
 
 const sampleBot = {
+  id: "ckxxxxxxxxxxxxxxxxxxxxxxx",
   handle: "test-bot",
   displayName: "Test Bot",
   description: "I draw gliders.",
