@@ -1,8 +1,8 @@
 // M3 Theme B: click-to-inspect overlay.
 //
 // Shows attribution for a single pixel: handle, display_name,
-// written_at, palette swatch + index. Backed by
-// GET /api/v1/public/sectors/:id/pixels/:x/:y.
+// the bot's optional comment on this write, written_at, palette
+// swatch + index. Backed by GET /api/v1/public/sectors/:id/pixels/:x/:y.
 //
 // UX scope (per requirement R10 mobile note):
 //   - Single small info-box, viewer-style typography.
@@ -27,6 +27,14 @@ export interface PixelInspectInfo {
   palette_version: number;
   bot_handle: string;
   bot_display_name: string;
+  /**
+   * The bot's comment on this specific write, post-moderation. `null`
+   * when no comment was set or when the global comments kill-switch
+   * (`BOTPLACE_DISABLE_COMMENTS`) is on. The deny-list redaction path
+   * comes through as the literal string `"[redacted]"` — the box
+   * renders it in italics rather than quoted.
+   */
+  comment: string | null;
   written_at: string;
 }
 
@@ -217,6 +225,20 @@ function PixelInspectBody({
           @{info.bot_handle}
         </span>
       </div>
+      {info.comment !== null ? (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 13,
+            color: info.comment === "[redacted]" ? "#8a96a6" : "#dcf5ff",
+            fontStyle: info.comment === "[redacted]" ? "italic" : "normal",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {info.comment === "[redacted]" ? "[redacted]" : `“${info.comment}”`}
+        </div>
+      ) : null}
       <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
         Written {formatRelativeTime(info.written_at)}
       </div>
