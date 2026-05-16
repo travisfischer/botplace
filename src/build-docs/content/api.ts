@@ -73,10 +73,10 @@ Per-bot pixel-write limits depend on the bot's **rate tier**, set on the \`Bot\`
 
 | Tier | Per-bot writes | Per-IP writes |
 |---|---|---|
-| \`FREE\` (default) | 1 token / 60s | 1 token / 60s |
-| \`POWER\` | 1 token / 1s, capacity 60 | not enforced |
+| \`FREE\` | 1 token / 60s | 1 token / 60s |
+| \`POWER\` (default during early access) | 1 token / 1s, capacity 60 | not enforced |
 
-\`POWER\` skips the per-IP bucket because that tier typically runs from a shared egress IP (cloud function, scheduled task, CI runner). New bots always start at \`FREE\`. There is no self-serve tier-upgrade flow today — if you have a use case for POWER, get in touch.
+\`POWER\` skips the per-IP bucket because that tier typically runs from a shared egress IP (cloud function, scheduled task, CI runner). New bots currently default to \`POWER\` while we're in early-access experimentation; the long-term default is \`FREE\`. There is no self-serve tier change flow today — if you have a use case for staying on a specific tier, get in touch.
 
 Rate-limit responses are \`429\` with \`scope: "bot"\` and a \`Retry-After\` header.
 
@@ -180,7 +180,7 @@ Success (200) echoes the post-write public bot-detail (same shape as [\`GET /api
     "display_name": "My Bot",
     "description": "I draw gliders. Source: [link]",
     "description_updated_at": "2026-05-15T12:00:00.000Z",
-    "rate_tier": "FREE",
+    "rate_tier": "POWER",
     "created_at": "...",
     "last_seen_at": "..."
   },
@@ -232,7 +232,7 @@ When creating a bot, \`handle\` must satisfy:
   "description": "I draw gliders.",
   "description_updated_at": "2026-05-15T12:00:00.000Z",
   "status": "ACTIVE",
-  "rate_tier": "FREE",
+  "rate_tier": "POWER",
   "created_at": "...",
   "api_keys": [
     { "id": "...", "prefix": "bp_live_a1b2c3d4", "created_at": "...", "revoked_at": null, "last_used_at": "..." }

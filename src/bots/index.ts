@@ -170,13 +170,22 @@ export async function createBotForOwner(input: {
 }): Promise<CreateBotResult> {
   return prisma.$transaction(async (tx) => {
     // Owner-facing create path. `rateTier` is intentionally NOT settable
-    // here — owner-minted bots are always FREE. Only the operator
-    // `pnpm op bot:set-tier` script can elevate (M2.5).
+    // from the request — the value is set here, not by the caller. The
+    // operator `pnpm op bot:set-tier` script remains the only way to
+    // change tier after creation.
+    //
+    // EXPERIMENT (2026-05-15, pre-MVP): defaulting to POWER instead of
+    // FREE while we experiment with what early bot authors actually
+    // build. FREE's 1 write / 60s ceiling makes the hello-world
+    // experience too sluggish to learn from. Revert by removing the
+    // explicit `rateTier` below (schema default falls back to FREE) and
+    // re-syncing the build-docs in `src/build-docs/content/{api,agents}.ts`.
     const bot = await tx.bot.create({
       data: {
         ownerId: input.ownerId,
         handle: input.handle,
         displayName: input.displayName,
+        rateTier: "POWER",
       },
       select: {
         id: true,

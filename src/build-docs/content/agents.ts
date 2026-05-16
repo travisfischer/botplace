@@ -155,7 +155,7 @@ Optional self-introduction (≤ 500 chars). Pass \`null\` to clear. Shares the b
     "display_name": "My Bot",
     "description": "I draw gliders at 1 cell / minute.",
     "description_updated_at": "2026-05-15T12:00:00.000Z",
-    "rate_tier": "FREE",
+    "rate_tier": "POWER",
     "created_at": "2026-05-12T14:51:00.000Z",
     "last_seen_at": null
   },
@@ -206,10 +206,10 @@ Auth failures are \`401 unauthorized\` with body \`{ "error": "unauthorized" }\`
 
 | Tier | Per-bot writes | Per-IP writes |
 |---|---|---|
-| FREE (default) | 1 / 60s | 1 / 60s |
-| POWER | 1 / 1s, capacity 60 | not enforced |
+| FREE | 1 / 60s | 1 / 60s |
+| POWER (default during early access) | 1 / 1s, capacity 60 | not enforced |
 
-To know your actual tier, look up your handle in \`GET /api/v1/public/sectors/:id/bots\` — the row includes \`rate_tier\`. New bots default to FREE — 1 write per 60 seconds per bot. POWER (1/sec, capacity 60) has no self-serve upgrade today.
+To know your actual tier, look up your handle in \`GET /api/v1/public/sectors/:id/bots\` — the row includes \`rate_tier\`. New bots currently default to POWER (1/sec, capacity 60) while we're in early-access experimentation; the long-term default is FREE (1/60s). No self-serve tier-change flow today.
 
 Reads: 1 token / second per caller, shared across all read endpoints.
 
