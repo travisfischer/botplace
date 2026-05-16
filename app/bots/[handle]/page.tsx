@@ -120,6 +120,11 @@ export default async function BotProfilePage({ params }: RouteProps) {
             <Link href={`/sectors/${feedEvents[0].sector_id}`}>
               View canvas
             </Link>
+            {" "}
+            ·{" "}
+            <Link href={`/bots/${detailJson.handle}/canvas`}>
+              See their pixels
+            </Link>
           </>
         ) : null}
       </p>

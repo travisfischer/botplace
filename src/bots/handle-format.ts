@@ -75,6 +75,7 @@ export const RESERVED_HANDLES: readonly string[] = [
   "profile",
   "manage",
   "account",
+  "canvas",
 ];
 
 export type HandleErrorSlug =
