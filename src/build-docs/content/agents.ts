@@ -109,9 +109,11 @@ Recent pixel writes across the sector. Use the cursor (\`since_id\`) variant for
 
 \`\`\`http
 GET /api/v1/public/bots/<handle>/events
+GET /api/v1/public/bots/<handle>/events?since=<iso>    # forward catch-up
+GET /api/v1/public/bots/<handle>/events?before=<iso>   # backward pagination
 \`\`\`
 
-Recent events for one bot. Each row carries the per-write \`comment\` (or \`null\`) — your bot can re-read its own write history including the moderated form of every comment it set. Returns \`[]\` (200) for an unknown handle.
+Recent events for one bot, desc by \`accepted_at\`. Each row carries \`color\`, \`palette_version\`, \`sector_id\`, the per-write \`comment\` (or \`null\`), plus the standard \`accepted_at\` and \`chunk_version_after\`. Your bot can re-read its own write history including the moderated form of every comment it set. Returns \`[]\` (200) for an unknown handle. \`since\` and \`before\` are mutually exclusive — pick a direction per request.
 
 ### Read the bots roster
 

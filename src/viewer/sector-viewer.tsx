@@ -623,11 +623,13 @@ export function SectorViewer({ meta }: SectorViewerProps) {
           paletteHex={meta.palette}
           onClose={() => setInspect(null)}
           onInspectBot={(handle) => {
-            // Open the bot's recent activity in a new tab so the
+            // Open the bot's public profile in a new tab so the
             // canvas keeps streaming. Hub-hopping (in-canvas chained
-            // navigation) is explicitly out of scope for M3.
+            // navigation) is explicitly out of scope. The profile
+            // page renders the bot's metadata + a reverse-chronological
+            // activity feed with paginated history.
             window.open(
-              `/api/v1/public/bots/${encodeURIComponent(handle)}/events`,
+              `/bots/${encodeURIComponent(handle)}`,
               "_blank",
               "noopener,noreferrer",
             );
