@@ -50,9 +50,24 @@ export interface SectorMeta {
 
 interface SectorViewerProps {
   meta: SectorMeta;
+  /**
+   * Static-mode override. When set, the viewer:
+   *   - fetches the snapshot from this URL instead of the unfiltered
+   *     `/api/v1/public/sectors/<id>/snapshot`
+   *   - skips the manifest poll loop and the heartbeat (no live updates,
+   *     no viewer-count contribution)
+   *   - disables click-to-inspect (the filtered view hides other bots'
+   *     pixels visually, so surfacing their attribution on click would
+   *     contradict the view)
+   * Pan, zoom, and the debug grid remain enabled.
+   *
+   * Used by the bot-filtered canvas at /bots/<handle>/canvas.
+   */
+  staticSnapshotUrl?: string;
 }
 
-export function SectorViewer({ meta }: SectorViewerProps) {
+export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
+  const staticMode = staticSnapshotUrl !== undefined;
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHandleRef = useRef<CanvasHandle>(null);
   const cacheRef = useRef<ChunkCache>(new ChunkCache());
@@ -178,16 +193,20 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     // public-API request (incl. scrapers/crawlers/uptime pings), which
     // burned through the Upstash monthly quota in days. The beacon caps
     // the cost at 2 cmds/min per real viewer.
-    const heartbeat = createHeartbeat(meta.id);
-    if (!document.hidden) heartbeat.start();
+    //
+    // Static mode: skip the heartbeat. A filtered-canvas viewer isn't
+    // "watching the canvas" in the live sense, and shouldn't inflate
+    // the viewer count for the underlying sector.
+    const heartbeat = staticMode ? null : createHeartbeat(meta.id);
+    if (heartbeat && !document.hidden) heartbeat.start();
 
     const onVisibility = () => {
       if (document.hidden) {
-        loop.pause();
-        heartbeat.stop();
+        if (!staticMode) loop.pause();
+        heartbeat?.stop();
       } else {
-        loop.resume();
-        heartbeat.start();
+        if (!staticMode) loop.resume();
+        heartbeat?.start();
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -197,9 +216,14 @@ export function SectorViewer({ meta }: SectorViewerProps) {
     // mismatch, abort) we fall through silently — the poll loop will
     // hydrate the cache the old way (manifest + per-chunk fetches), so
     // a broken snapshot only costs us the speedup, not correctness.
+    //
+    // Static mode (filtered viewer): uses the override URL and is the
+    // ONLY paint path — the poll loop is gated off below.
     const preload = async () => {
       try {
-        const snap = await fetchSnapshot(meta.id, preloadAborter.signal);
+        const snap = await fetchSnapshot(meta.id, preloadAborter.signal, {
+          url: staticSnapshotUrl,
+        });
         if (cancelled) return;
         if (snap.chunk_size !== meta.chunk_size) {
           console.warn(
@@ -223,7 +247,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
 
     void preload().then(() => {
       if (cancelled) return;
-      if (!document.hidden) loop.start();
+      if (!staticMode && !document.hidden) loop.start();
     });
 
     return () => {
@@ -231,9 +255,9 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       preloadAborter.abort();
       document.removeEventListener("visibilitychange", onVisibility);
       loop.stop();
-      heartbeat.stop();
+      heartbeat?.stop();
     };
-  }, [meta.id, meta.chunk_size]);
+  }, [meta.id, meta.chunk_size, staticMode, staticSnapshotUrl]);
 
   // ---- Pan / zoom ----
   // Pointer state: id → screen coords. Multi-touch is two entries.
@@ -460,6 +484,7 @@ export function SectorViewer({ meta }: SectorViewerProps) {
       const elapsed = Date.now() - down.startedAt;
       pointerDownRef.current = null;
       if (
+        !staticMode &&
         distance <= CLICK_DRAG_THRESHOLD_PX &&
         elapsed <= CLICK_MAX_DURATION_MS &&
         !down.dismissOnly

@@ -68,25 +68,29 @@ function rateLimitedFromResponse(res: Response, label: string): RateLimitedError
  * on initial mount so the canvas paints immediately instead of walking
  * the manifest + per-chunk fetches. The polling loop takes over for
  * incremental updates after the snapshot lands.
+ *
+ * `opts.url` lets the caller substitute a different snapshot endpoint
+ * (e.g. the bot-filtered snapshot at
+ * `/api/v1/public/sectors/<id>/bots/<handle>/snapshot`). Defaults to
+ * the unfiltered sector snapshot. The decoded shape is identical either
+ * way — same BPSS codec.
  */
 export async function fetchSnapshot(
   sectorId: string,
   signal: AbortSignal,
-  opts: FetcherOpts = {},
+  opts: FetcherOpts & { url?: string } = {},
 ): Promise<DecodedSnapshot> {
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
-  const res = await fetchImpl(
-    urlFor(opts.baseUrl, `/api/v1/public/sectors/${sectorId}/snapshot`),
-    {
-      signal,
-      // Omit cookies: the public read endpoints don't use auth, and
-      // sending the Auth.js session cookie causes Vercel's CDN to skip
-      // cache for personalized responses — every viewer poll hits origin
-      // and burns the per-IP rate-limit bucket.
-      credentials: "omit",
-      headers: { Accept: "application/octet-stream" },
-    },
-  );
+  const path = opts.url ?? `/api/v1/public/sectors/${sectorId}/snapshot`;
+  const res = await fetchImpl(urlFor(opts.baseUrl, path), {
+    signal,
+    // Omit cookies: the public read endpoints don't use auth, and
+    // sending the Auth.js session cookie causes Vercel's CDN to skip
+    // cache for personalized responses — every viewer poll hits origin
+    // and burns the per-IP rate-limit bucket.
+    credentials: "omit",
+    headers: { Accept: "application/octet-stream" },
+  });
   if (res.status === 429 || res.status === 503) {
     throw rateLimitedFromResponse(res, "snapshot");
   }
