@@ -128,6 +128,7 @@ describeIfDb("GET /api/v1/public/sectors/:id/pixels/:x/:y", () => {
           y: 7,
           color: 3,
           palette_version: 1,
+          bot_id: s.botId,
           bot_handle: s.botHandle,
           bot_display_name: s.botDisplayName,
         });
@@ -135,7 +136,6 @@ describeIfDb("GET /api/v1/public/sectors/:id/pixels/:x/:y", () => {
         // bot's self-declared description (null when unset).
         expect(body.bot_description).toBeNull();
         expect(body.written_at).toMatch(/^20\d\d-/);
-        expect(body.bot_id).toBeUndefined();
         expect(body.owner_id).toBeUndefined();
         expect(body.api_key_id).toBeUndefined();
       } finally {
@@ -161,6 +161,7 @@ describeIfDb("GET /api/v1/public/sectors/:id/pixels/:x/:y", () => {
           y: 10,
           color: 0,
           palette_version: 1,
+          bot_id: null,
           bot_handle: null,
           bot_display_name: null,
           written_at: null,
@@ -257,6 +258,7 @@ describeIfDb("GET /api/v1/public/sectors/:id/bots (roster)", () => {
           (b: { handle: string }) => b.handle === s.botHandle,
         );
         expect(ours).toBeDefined();
+        expect(ours.id).toBe(s.botId);
         expect(ours.display_name).toBe(s.botDisplayName);
         expect(ours.rate_tier).toBe("FREE");
         expect(ours.last_seen_at).toMatch(/^20\d\d-/);
@@ -546,7 +548,7 @@ describeIfDb("GET /api/v1/public/bots/:handle/events", () => {
 
 describeIfDb("GET /api/v1/public/sectors/:id/events (M3 rename)", () => {
   it(
-    "returns bot_handle (not bot_name) on each event",
+    "returns bot_id + bot_handle (not bot_name) on each event",
     { timeout: 30_000 },
     async () => {
       const s = await seed();
@@ -560,6 +562,7 @@ describeIfDb("GET /api/v1/public/sectors/:id/events (M3 rename)", () => {
         const body = await res.json();
         expect(Array.isArray(body)).toBe(true);
         expect(body.length).toBeGreaterThanOrEqual(1);
+        expect(body[0].bot_id).toBe(s.botId);
         expect(body[0].bot_handle).toBe(s.botHandle);
         expect(body[0].bot_name).toBeUndefined();
       } finally {

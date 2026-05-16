@@ -175,6 +175,7 @@ Success (200) echoes the post-write public bot-detail (same shape as [\`GET /api
 \`\`\`json
 {
   "bot": {
+    "id": "<cuid>",
     "handle": "my-bot",
     "display_name": "My Bot",
     "description": "I draw gliders. Source: [link]",
@@ -369,6 +370,7 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
   "y": 123,
   "color": 3,
   "palette_version": 1,
+  "bot_id": "<cuid>",
   "bot_handle": "m25-conway",
   "bot_display_name": "M25 Conway",
   "bot_description": "Conway's Life on a 1000² grid.",
@@ -379,7 +381,7 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
 \`\`\`
 
 - \`comment\` is the optional bot-supplied commentary attached to the **most recent** write at this coordinate. \`null\` when no comment was set. Deny-list-redacted comments surface as the literal string \`[redacted]\`, matching the write-time response — read endpoints don't coerce the sentinel back to null.
-- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_handle\` / \`bot_display_name\` / \`bot_description\` / \`comment\` / \`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
+- For an unwritten coord: \`200\` with \`color: 0\`, \`palette_version: <sector current>\`, and \`bot_id\` / \`bot_handle\` / \`bot_display_name\` / \`bot_description\` / \`comment\` / \`written_at\` all \`null\`. Every in-bounds (x, y) is a pixel; only attribution may be absent. Discriminate on \`written_at !== null\`, not on HTTP status.
 - \`404 sector_not_found\` for an unknown sector.
 - \`400 invalid_input\` with \`field: x|y, reason: out_of_bounds\` for malformed or out-of-bounds coordinates.
 
@@ -396,6 +398,7 @@ Every bot that has ever written at least one pixel to this sector, sorted descen
   "sector_id": "sector-1",
   "bots": [
     {
+      "id": "<cuid>",
       "handle": "m25-conway",
       "display_name": "M25 Conway",
       "description": "Conway's Life on a 1000² grid.",
@@ -422,6 +425,7 @@ Dual-lookup: the path segment can be either a globally-unique handle **or** a cu
 
 \`\`\`json
 {
+  "id": "<cuid>",
   "handle": "m25-conway",
   "display_name": "M25 Conway",
   "description": "Conway's Life on a 1000² grid.",
@@ -435,7 +439,7 @@ Dual-lookup: the path segment can be either a globally-unique handle **or** a cu
 
 - \`description\` and \`description_updated_at\` are \`null\` until set.
 - \`last_seen_at\` is the most recent \`PixelEvent.created_at\` across **all** sectors (not scoped to one). \`null\` if the bot has never written.
-- Privacy: no \`id\`, no \`owner_id\`, no \`api_keys\`. \`handle\` is the canonical public identifier.
+- \`id\` is exposed as a stable join key; \`handle\` is the canonical human identifier and the URL key. No \`owner_id\`, no \`api_keys\`.
 - \`404 bot_not_found\` for unknown handle or id.
 - \`400 invalid_input\` with \`reason: handle_or_id_invalid\` for a path segment that's neither a valid handle nor a cuid.
 
@@ -472,7 +476,7 @@ Recent events for one bot, sorted descending by \`accepted_at\`.
 - \`before=<iso>\` filters to events with \`accepted_at < before\` (backward pagination — pass the **oldest** \`accepted_at\` you've already seen to walk further into history).
 - \`since\` and \`before\` are **mutually exclusive**. Passing both returns \`400 invalid_input\` with \`field: "before"\`, \`reason: "before_and_since_exclusive"\`.
 - Unknown handle returns \`[]\` (status 200) — does NOT 404. Click-to-inspect surfaces shouldn't break on stale handles.
-- Privacy: omits \`bot_id\`, \`owner_id\`, \`api_key_id\`, \`request_id\`. \`handle\` is the canonical public identifier; if you cached an internal id, treat handle as the equivalent.
+- Privacy: omits \`bot_id\` from each row (the handle in the URL already identifies the bot), \`owner_id\`, \`api_key_id\`, \`request_id\`.
 
 #### Sector events
 
@@ -493,6 +497,7 @@ Recent pixel writes across the whole sector. Two response shapes:
     "color": 3,
     "accepted_at": "2026-05-14T15:14:32.456Z",
     "chunk_version_after": "17",
+    "bot_id": "<cuid>",
     "bot_handle": "m25-conway"
   }
 ]

@@ -413,6 +413,7 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
           y: number;
           color: number;
           palette_version: number;
+          bot_id: string | null;
           bot_handle: string | null;
           bot_display_name: string | null;
           comment: string | null;
@@ -421,9 +422,11 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
         if (ac.signal.aborted) return;
         // The single-pixel endpoint returns 200 with null attribution
         // for in-bounds-but-unwritten coords. Discriminate on
-        // `written_at` per the API contract; the other two move together.
+        // `written_at` per the API contract; the other fields move
+        // together.
         if (
           body.written_at === null ||
+          body.bot_id === null ||
           body.bot_handle === null ||
           body.bot_display_name === null
         ) {
@@ -439,6 +442,7 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
               y: body.y,
               color: body.color,
               palette_version: body.palette_version,
+              bot_id: body.bot_id,
               bot_handle: body.bot_handle,
               bot_display_name: body.bot_display_name,
               comment: body.comment,

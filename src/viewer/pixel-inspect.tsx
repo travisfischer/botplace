@@ -25,6 +25,7 @@ export interface PixelInspectInfo {
   y: number;
   color: number;
   palette_version: number;
+  bot_id: string;
   bot_handle: string;
   bot_display_name: string;
   /**

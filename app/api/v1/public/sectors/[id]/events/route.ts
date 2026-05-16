@@ -2,9 +2,9 @@
 // no auth). Used by the M2.5 sparkle bot and any other reactive bot
 // that wants to react to canvas activity.
 //
-// Privacy model: exposes `bot_handle` (the canonical public identifier
-// post-M3), but never owner_id, api_key_id, request_id, bot_id, or any
-// other internal identifier.
+// Privacy model: exposes `bot_id` (stable join key) + `bot_handle`
+// (canonical human identifier, post-M3). Never owner_id, api_key_id,
+// request_id, or any other internal identifier.
 //
 // M3 hard-cut: previously this endpoint returned `bot_name`. As of M3
 // the field is renamed to `bot_handle`. There is no deprecation window
@@ -84,7 +84,7 @@ interface EventRow {
   color: number;
   createdAt: Date;
   chunkVersionAfter: bigint;
-  bot: { handle: string };
+  bot: { id: string; handle: string };
 }
 
 function toWireEvent(e: EventRow): Record<string, unknown> {
@@ -95,6 +95,9 @@ function toWireEvent(e: EventRow): Record<string, unknown> {
     accepted_at: e.createdAt.toISOString(),
     chunk_version_after: e.chunkVersionAfter.toString(),
     // M3: `bot_handle` replaces `bot_name`. Hard cut.
+    // `bot_id` added later as a stable join key — `handle` is canonical
+    // for humans, `id` for tooling that wants a non-renameable key.
+    bot_id: e.bot.id,
     bot_handle: e.bot.handle,
   };
 }
@@ -146,7 +149,7 @@ export async function GET(
           color: true,
           createdAt: true,
           chunkVersionAfter: true,
-          bot: { select: { handle: true } },
+          bot: { select: { id: true, handle: true } },
         },
       })) as EventRow[];
 
@@ -193,7 +196,7 @@ export async function GET(
         color: true,
         createdAt: true,
         chunkVersionAfter: true,
-        bot: { select: { handle: true } },
+        bot: { select: { id: true, handle: true } },
       },
     })) as EventRow[];
 

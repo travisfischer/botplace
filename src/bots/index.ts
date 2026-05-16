@@ -67,11 +67,15 @@ export interface BotSummary {
 }
 
 /**
- * Public bot-detail shape. No `id`, no `apiKeys` — `handle` is the
- * canonical public identifier. Used by `PATCH /api/v1/bots/me` (echoes
- * post-write state) and `GET /api/v1/public/bots/[handle_or_id]`.
+ * Public bot-detail shape. `id` (cuid) is exposed alongside `handle`
+ * because external tooling sometimes needs a join key that doesn't
+ * change if a future product flow ever permits handle renames; `handle`
+ * remains the canonical human identifier and the route key. `apiKeys`
+ * are NOT included (owner-only). Used by `PATCH /api/v1/bots/me`
+ * (echoes post-write state) and `GET /api/v1/public/bots/[handle_or_id]`.
  */
 export interface BotPublicDetail {
+  id: string;
   handle: string;
   displayName: string;
   description: string | null;
@@ -401,6 +405,7 @@ export function descriptionsDisabled(): boolean {
 export function botPublicDetailToJson(b: BotPublicDetail) {
   const disabled = descriptionsDisabled();
   return {
+    id: b.id,
     handle: b.handle,
     display_name: b.displayName,
     description: disabled ? null : b.description,
@@ -664,6 +669,7 @@ export async function updateBotDescription(input: {
     prisma.bot.findUnique({
       where: { id: input.botId },
       select: {
+        id: true,
         handle: true,
         displayName: true,
         description: true,
@@ -722,6 +728,7 @@ export async function getBotPublicDetail(by: {
   if (!bot) return null;
   const lastSeenAt = await lastSeenAtForBot(bot.id);
   return {
+    id: bot.id,
     handle: bot.handle,
     displayName: bot.displayName,
     description: bot.description,

@@ -2,9 +2,10 @@
 // Public, no auth. Returns every bot that has ever written at least
 // one pixel to this sector, sorted descending by last-seen-at.
 //
-// Privacy: returns `handle`, `display_name`, `description`,
-// `rate_tier`, `last_seen_at` per bot. No owner_id, no api_key_id, no
-// internal identifiers.
+// Privacy: returns `id`, `handle`, `display_name`, `description`,
+// `rate_tier`, `last_seen_at` per bot. `id` is exposed as a stable
+// join key; `handle` is the canonical human identifier. No owner_id,
+// no api_key_id, no other internal identifiers.
 //
 // Pagination: M3 deliberately ships unpaginated. The roster is sized
 // by "bots that have ever written here" which, on launch, is single
@@ -27,6 +28,7 @@ const CACHE_CONTROL = "public, s-maxage=10, stale-while-revalidate=60";
 const CDN_CACHE_CONTROL = "public, s-maxage=10, stale-while-revalidate=60";
 
 interface RosterRow {
+  id: string;
   handle: string;
   display_name: string;
   description: string | null;
@@ -91,6 +93,7 @@ export async function GET(
     // this sector's roster.
     const rows = await prisma.$queryRaw<RosterRow[]>`
       SELECT
+        b.id                   AS "id",
         b.handle               AS "handle",
         b.display_name         AS "display_name",
         b.description          AS "description",
@@ -100,7 +103,7 @@ export async function GET(
       FROM pixel_events e
       JOIN bots b ON b.id = e.bot_id
       WHERE e.sector_id = ${sectorId}
-      GROUP BY b.handle, b.display_name, b.description, b.rate_tier
+      GROUP BY b.id, b.handle, b.display_name, b.description, b.rate_tier
       ORDER BY MAX(e.created_at) DESC
     `;
     // Operator kill-switch: when BOTPLACE_DISABLE_DESCRIPTIONS=1 the
