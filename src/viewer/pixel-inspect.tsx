@@ -15,10 +15,15 @@
 // Design intent: minimum viable attribution UX. Anything fancier
 // (filtering, hub-hopping, follow-this-bot) is deferred per the M3
 // scope ("Hub-hopper / chained bot-to-bot click-through in the viewer").
+//
+// Per requirement-20260520-0914 F14: token-driven surface + flat-shadow
+// elevation + Button primitives (replaced the inline dark-theme styles).
 
 "use client";
 
 import { useEffect, useRef } from "react";
+
+import { Button } from "@/src/components/ui/button";
 
 export interface PixelInspectInfo {
   x: number;
@@ -105,49 +110,32 @@ export function PixelInspectBox({
   }, [onClose]);
 
   // Position the box near the click but keep it inside the viewport.
-  const boxStyle: React.CSSProperties = {
-    position: "absolute",
+  // Geometry (top/left) is dynamic — width/padding/typography come from
+  // utility classes.
+  const position_style: React.CSSProperties = {
     top: Math.max(8, position.screenY + 12),
     left: Math.max(8, position.screenX + 12),
-    minWidth: 220,
-    maxWidth: 320,
-    padding: "10px 12px",
-    background: "rgba(20, 20, 28, 0.96)",
-    color: "#dcf5ff",
-    borderRadius: 6,
-    boxShadow: "0 6px 24px rgba(0, 0, 0, 0.4)",
-    fontSize: 13,
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    lineHeight: 1.4,
-    zIndex: 20,
   };
 
   return (
     <div
       ref={ref}
-      style={boxStyle}
+      style={position_style}
       role="dialog"
       aria-label="Pixel info"
       onPointerDown={(e) => e.stopPropagation()}
       onPointerUp={(e) => e.stopPropagation()}
+      className="absolute z-20 min-w-[240px] max-w-[340px] bg-surface text-text border-[1.5px] border-border shadow-flat-sm px-3.5 py-3 text-sm leading-snug"
     >
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <strong style={{ fontSize: 12, opacity: 0.7 }}>
+      <div className="flex items-center justify-between gap-2">
+        <code className="font-mono text-xs text-text-muted font-bold">
           ({position.worldX}, {position.worldY})
-        </strong>
+        </code>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          style={{
-            background: "transparent",
-            color: "#dcf5ff",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 16,
-            lineHeight: 1,
-            padding: 0,
-          }}
+          className="text-text-muted hover:text-text cursor-pointer text-lg leading-none px-1"
         >
           ×
         </button>
@@ -171,94 +159,77 @@ function PixelInspectBody({
   onInspectBot(handle: string): void;
 }) {
   if (outcome === "loading") {
-    return <p style={{ margin: "8px 0 0", opacity: 0.7 }}>Loading…</p>;
+    return <p className="mt-2 mb-0 text-text-muted">Loading…</p>;
   }
   if (outcome.kind === "unwritten") {
-    return (
-      <p style={{ margin: "8px 0 0", opacity: 0.7 }}>No writes.</p>
-    );
+    return <p className="mt-2 mb-0 text-text-muted">No writes.</p>;
   }
   if (outcome.kind === "not_found") {
     return (
-      <p style={{ margin: "8px 0 0", opacity: 0.7 }}>
+      <p className="mt-2 mb-0 text-text-muted">
         No bot has written this pixel yet.
       </p>
     );
   }
   if (outcome.kind === "error") {
     return (
-      <p
-        style={{ margin: "8px 0 0", color: "#e6c86e" }}
-        role="alert"
-      >
+      <p className="mt-2 mb-0 text-sun-foreground bg-sun border-[1.5px] border-border px-2 py-1 text-xs" role="alert">
         {outcome.message}
       </p>
     );
   }
   const { info } = outcome;
-  const swatch = paletteHex[info.color] ?? "#000";
+  // Per-pixel swatch reads from canvas content (palette data), not the
+  // token system — fallback to text color so a missing palette renders
+  // as a small ink square rather than going invisible.
+  const swatch = paletteHex[info.color];
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8 }}>
+      <div className="flex items-center mt-2 gap-2">
         <span
           aria-hidden
-          style={{
-            display: "inline-block",
-            width: 18,
-            height: 18,
-            borderRadius: 3,
-            background: swatch,
-            border: "1px solid rgba(255,255,255,0.25)",
-          }}
+          className="inline-block w-[18px] h-[18px] border-[1.5px] border-border"
+          style={swatch ? { background: swatch } : undefined}
         />
         <a
           href={`/palettes/${info.palette_version}#color-${info.color}`}
-          style={{ color: "#dcf5ff", textDecoration: "underline" }}
+          className="text-brand font-bold hover:underline"
           target="_blank"
           rel="noopener noreferrer"
         >
           color {info.color}
         </a>
       </div>
-      <div style={{ marginTop: 8 }}>
-        <strong>{info.bot_display_name}</strong>
-        <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.7 }}>
+      <div className="mt-2">
+        <strong className="font-bold text-text">{info.bot_display_name}</strong>
+        <span className="ml-1.5 text-xs text-text-muted font-mono">
           @{info.bot_handle}
         </span>
       </div>
       {info.comment !== null ? (
         <div
-          style={{
-            marginTop: 6,
-            fontSize: 13,
-            color: info.comment === "[redacted]" ? "#8a96a6" : "#dcf5ff",
-            fontStyle: info.comment === "[redacted]" ? "italic" : "normal",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
+          className={
+            info.comment === "[redacted]"
+              ? "mt-1.5 text-sm text-text-muted italic whitespace-pre-wrap break-words"
+              : "mt-1.5 text-sm text-text whitespace-pre-wrap break-words"
+          }
         >
           {info.comment === "[redacted]" ? "[redacted]" : `“${info.comment}”`}
         </div>
       ) : null}
-      <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+      <div className="mt-1 text-xs text-text-muted">
         Written {formatRelativeTime(info.written_at)}
       </div>
-      <button
-        type="button"
-        onClick={() => onInspectBot(info.bot_handle)}
-        style={{
-          marginTop: 8,
-          background: "transparent",
-          color: "#508cd7",
-          border: "1px solid #508cd7",
-          borderRadius: 4,
-          padding: "4px 8px",
-          cursor: "pointer",
-          fontSize: 12,
-        }}
-      >
-        See @{info.bot_handle}&rsquo;s recent activity →
-      </button>
+      <div className="mt-3">
+        <Button
+          type="button"
+          variant="neutral"
+          size="sm"
+          onClick={() => onInspectBot(info.bot_handle)}
+        >
+          See @{info.bot_handle}&rsquo;s activity →
+        </Button>
+      </div>
     </>
   );
 }
