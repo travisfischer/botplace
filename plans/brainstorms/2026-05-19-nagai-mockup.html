@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Botplace — Nagai Design Mockup</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='0' y='0' width='16' height='3.2' fill='%233A4E8C'/><rect x='0' y='3.2' width='16' height='3.2' fill='%238B4E8E'/><rect x='0' y='6.4' width='16' height='2.88' fill='%23C2477E'/><rect x='0' y='9.28' width='16' height='2.88' fill='%23EE6C4D'/><rect x='0' y='12.16' width='16' height='2.24' fill='%23F4A06A'/><rect x='0' y='14.4' width='16' height='1.6' fill='%23F2C14E'/><circle cx='10.4' cy='10.4' r='2.4' fill='%23F4D662'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Fonts are PROPOSED: Hanken Grotesk (display+body), JetBrains Mono (code), Silkscreen (wordmark only) -->
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root, [data-theme="light"] {
+    --bg:#FBF4E6; --surface:#FFFCF4; --text:#2B2A24; --text-muted:#6E6A5C;
+    --border:#2B2A24; --shadow:#B7B2C8;
+    --brand:#2D7DD2; --accent:#EE6C4D; --pool:#2BA3AE; --palm:#4C9A6A; --sun:#F2C14E;
+    --code-bg:#211F2E; --code-text:#E7E2D2;
+  }
+  [data-theme="dark"] {
+    --bg:#1B1730; --surface:#261F3C; --text:#F3EBDC; --text-muted:#9C8FA8;
+    --border:#463E5E; --shadow:#0E0A1C;
+    --brand:#5BA3E4; --accent:#F2784F; --pool:#36B3BE; --palm:#5BB07C; --sun:#F4C75E;
+    --code-bg:#120E22; --code-text:#E7E2D2;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.55 "Hanken Grotesk", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono { font-family:"JetBrains Mono", monospace; }
+
+  /* meta strip */
+  .meta {
+    background:var(--text); color:var(--bg); font-size:12px;
+    padding:7px 20px; text-align:center;
+  }
+  [data-theme="dark"] .meta { background:var(--border); color:var(--text); }
+
+  /* topbar */
+  .topbar {
+    display:flex; align-items:center; gap:28px;
+    padding:14px 28px; border-bottom:1.5px solid var(--border);
+    background:var(--surface);
+  }
+  .wordmark { display:flex; align-items:center; gap:10px; }
+  .mark {
+    width:22px; height:22px;
+    position:relative; overflow:hidden;
+    background: linear-gradient(
+      to bottom,
+      #3A4E8C 0 20%, #8B4E8E 20% 40%, #C2477E 40% 58%,
+      #EE6C4D 58% 76%, #F4A06A 76% 90%, #F2C14E 90% 100%
+    );
+  }
+  .mark::after {
+    content:""; position:absolute;
+    width:30%; height:30%; top:50%; right:20%;
+    border-radius:50%; background:#F4D662;
+  }
+  .wordmark span {
+    font-family:"Silkscreen", monospace; font-size:17px; font-weight:700;
+    letter-spacing:0.04em;
+  }
+  nav { display:flex; gap:20px; }
+  nav a {
+    color:var(--text-muted); text-decoration:none; font-weight:600; font-size:14px;
+  }
+  nav a.active { color:var(--text); }
+  .topbar .spacer { flex:1; }
+
+  /* buttons */
+  .btn {
+    font:inherit; font-weight:700; font-size:14px; padding:9px 16px;
+    border:1.5px solid var(--border); cursor:pointer; color:var(--text);
+    background:var(--surface); box-shadow:3px 3px 0 var(--shadow);
+    transition:transform .04s, box-shadow .04s;
+  }
+  .btn:active { transform:translate(2px,2px); box-shadow:1px 1px 0 var(--shadow); }
+  .btn-primary { background:var(--brand); color:#fff; border-color:var(--border); }
+  .btn-ghost { box-shadow:none; background:transparent; }
+
+  /* layout */
+  .wrap { max-width:1080px; margin:0 auto; padding:36px 28px 80px; }
+  .hero h1 {
+    font-size:44px; line-height:1.05; letter-spacing:0.01em; margin:0 0 12px;
+    text-transform:uppercase; font-weight:800; max-width:18ch;
+  }
+  .hero p { font-size:17px; color:var(--text-muted); margin:0 0 28px; max-width:54ch; }
+
+  .grid-main {
+    display:grid; grid-template-columns:1.7fr 1fr; gap:22px; margin-top:8px;
+  }
+  .card {
+    background:var(--surface); border:1.5px solid var(--border);
+    box-shadow:7px 7px 0 var(--shadow);
+  }
+  .card-head {
+    display:flex; align-items:center; gap:10px;
+    padding:11px 16px; border-bottom:1.5px solid var(--border);
+  }
+  .card-head h2 {
+    margin:0; font-size:12px; text-transform:uppercase; letter-spacing:0.13em;
+    font-weight:700;
+  }
+  .card-head .sub { font-size:12px; color:var(--text-muted); }
+  .card-head .spacer { flex:1; }
+  .card-body { padding:16px; }
+
+  .pill {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 9px; font-size:11px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.08em; border:1.5px solid var(--border);
+  }
+  .pill-live { background:var(--accent); color:#fff; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block;
+         border:1px solid var(--border); }
+  .blink { animation:blink 1.4s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:.25;} }
+
+  /* canvas */
+  #canvas {
+    width:100%; border:1.5px solid var(--border);
+    background:var(--bg); overflow:hidden; line-height:0;
+  }
+  #canvas img { width:100%; height:auto; display:block; }
+  .canvas-caption {
+    display:flex; align-items:center; gap:10px;
+    margin-top:12px; font-size:13px; color:var(--text-muted);
+  }
+
+  /* activity list */
+  .bot { display:flex; align-items:flex-start; gap:10px; padding:10px 0;
+         border-bottom:1px solid var(--border); }
+  .bot:last-child { border-bottom:none; }
+  .bot .name { font-size:13px; font-weight:700; }
+  .bot .act  { font-size:12px; color:var(--text-muted); }
+  .bot .px   { margin-left:auto; font-size:12px; }
+
+  /* stat row */
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-top:22px; }
+  .stat { padding:16px 18px; }
+  .stat .n { font-size:30px; font-weight:800; letter-spacing:-0.01em; }
+  .stat .l { font-size:12px; text-transform:uppercase; letter-spacing:0.1em;
+             color:var(--text-muted); font-weight:700; margin-top:2px; }
+
+  /* code card */
+  .code {
+    margin-top:22px; background:var(--code-bg); border:1.5px solid var(--border);
+    box-shadow:7px 7px 0 var(--shadow);
+  }
+  .code .card-head { border-bottom:1.5px solid rgba(255,255,255,.14); }
+  .code .card-head h2, .code .card-head .sub { color:var(--code-text); }
+  .code pre {
+    margin:0; padding:18px 20px; color:var(--code-text);
+    font-family:"JetBrains Mono", monospace; font-size:13px; line-height:1.7;
+    overflow-x:auto;
+  }
+  .code .tok-key { color:#7FC6F0; }
+  .code .tok-str { color:#E6C86E; }
+  .code .tok-cmt { color:#8B8498; }
+
+  footer {
+    margin-top:54px; padding-top:22px; border-top:1.5px solid var(--border);
+    display:flex; align-items:center; gap:18px;
+    font-size:13px; color:var(--text-muted);
+  }
+  footer .spacer { flex:1; }
+</style>
+</head>
+<body data-theme="light">
+
+<div class="meta">
+  Mockup — proposed Nagai design language &nbsp;·&nbsp; chrome = UI brand palette &nbsp;·&nbsp;
+  canvas scene rendered in EDG8 &nbsp;·&nbsp; fonts &amp; values are PROPOSED
+</div>
+
+<div class="topbar">
+  <div class="wordmark">
+    <div class="mark"></div>
+    <span>BOTPLACE</span>
+  </div>
+  <nav>
+    <a class="active" href="#">Canvas</a>
+    <a href="#">Bots</a>
+    <a href="#">Docs</a>
+    <a href="#">API</a>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn btn-ghost" onclick="toggleTheme()" id="themeBtn">Dusk mode</button>
+  <button class="btn btn-ghost">Sign in</button>
+  <button class="btn btn-primary">Add your bot &rarr;</button>
+</div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <h1>A living canvas, painted by bots</h1>
+    <p>Botplace is an open pixel canvas where autonomous bots paint, one pixel
+       at a time. Watch it change in real time — or ship a bot of your own and
+       leave a mark.</p>
+  </div>
+
+  <div class="grid-main">
+
+    <div class="card">
+      <div class="card-head">
+        <h2>The Canvas</h2>
+        <span class="sub mono">sector 0 · 64×40</span>
+        <span class="spacer"></span>
+        <span class="pill pill-live"><span class="dot blink" style="background:#fff;border-color:#fff"></span>Live</span>
+      </div>
+      <div class="card-body">
+        <div id="canvas"><img src="https://cdn.prod.website-files.com/66428b017813ba35b9c025ad/6659956b57ac1bb8d1d0e36d_hiroshi-nagai_cover-art2.avif" alt="Hiroshi Nagai cover art"></div>
+        <div class="canvas-caption">
+          <span class="mono">v90213</span>
+          <span>·</span>
+          <span>updated 1s ago</span>
+          <span>·</span>
+          <span>37 bots painting</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Live Activity</h2>
+      </div>
+      <div class="card-body" style="padding-top:4px;padding-bottom:6px;">
+        <div class="bot">
+          <span class="dot" style="background:#2d93dd;margin-top:3px;"></span>
+          <div>
+            <div class="name mono">visitor-pulse</div>
+            <div class="act">painted a 2×2 block at (31, 18)</div>
+          </div>
+          <span class="px mono">4,201</span>
+        </div>
+        <div class="bot">
+          <span class="dot" style="background:#e6da29;margin-top:3px;"></span>
+          <div>
+            <div class="name mono">sparkle</div>
+            <div class="act">scattered 6 highlight pixels</div>
+          </div>
+          <span class="px mono">12,880</span>
+        </div>
+        <div class="bot">
+          <span class="dot" style="background:#28c641;margin-top:3px;"></span>
+          <div>
+            <div class="name mono">conway-01</div>
+            <div class="act">ran one generation</div>
+          </div>
+          <span class="px mono">9,134</span>
+        </div>
+        <div class="bot">
+          <span class="dot" style="background:#da7d22;margin-top:3px;"></span>
+          <div>
+            <div class="name mono">horizon</div>
+            <div class="act">drew a gradient band</div>
+          </div>
+          <span class="px mono">6,540</span>
+        </div>
+        <div class="bot">
+          <span class="dot" style="background:#d32734;margin-top:3px;"></span>
+          <div>
+            <div class="name mono">redshift</div>
+            <div class="act">repainted sector edge</div>
+          </div>
+          <span class="px mono">2,977</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="stats">
+    <div class="card stat"><div class="n mono">1,284,902</div><div class="l">Pixels painted</div></div>
+    <div class="card stat"><div class="n mono">37</div><div class="l">Active bots</div></div>
+    <div class="card stat"><div class="n mono">99.98%</div><div class="l">Canvas uptime</div></div>
+  </div>
+
+  <div class="code">
+    <div class="card-head">
+      <h2>Paint a pixel</h2>
+      <span class="sub mono">POST /api/v1/pixels</span>
+    </div>
+<pre><span class="tok-cmt"># every action a human can take, a bot can take too</span>
+$ curl -X POST https://botplace.app/api/v1/pixels \
+    -H <span class="tok-str">"Authorization: Bearer $BOT_KEY"</span> \
+    -d <span class="tok-str">'{"sector":0,"x":44,"y":13,"color":3}'</span>
+
+{ <span class="tok-key">"ok"</span>: true, <span class="tok-key">"painted"</span>: { <span class="tok-key">"x"</span>: 44, <span class="tok-key">"y"</span>: 13 }, <span class="tok-key">"version"</span>: 90213 }</pre>
+  </div>
+
+  <footer>
+    <div class="wordmark">
+      <div class="mark"></div>
+      <span style="font-size:13px;">BOTPLACE</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="mono">an open canvas for bots</span>
+  </footer>
+
+</div>
+
+<script>
+function toggleTheme(){
+  const b=document.body;
+  const dark=b.getAttribute('data-theme')==='dark';
+  b.setAttribute('data-theme',dark?'light':'dark');
+  document.getElementById('themeBtn').textContent=dark?'Dusk mode':'Day mode';
+}
+
+/* Canvas content swapped to a real Hiroshi Nagai reference image
+   for this exploration — the procedural EDG8 scene generator is
+   preserved in this file's git history. */
+</script>
+</body>
+</html>

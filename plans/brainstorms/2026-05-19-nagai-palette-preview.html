@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Botplace — Nagai Palette Preview</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='0' y='0' width='16' height='3.2' fill='%233A4E8C'/><rect x='0' y='3.2' width='16' height='3.2' fill='%238B4E8E'/><rect x='0' y='6.4' width='16' height='2.88' fill='%23C2477E'/><rect x='0' y='9.28' width='16' height='2.88' fill='%23EE6C4D'/><rect x='0' y='12.16' width='16' height='2.24' fill='%23F4A06A'/><rect x='0' y='14.4' width='16' height='1.6' fill='%23F2C14E'/><circle cx='10.4' cy='10.4' r='2.4' fill='%23F4D662'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root, [data-theme="light"] {
+    /* UI brand palette — proposed, react freely. Semantic role names so
+       dark mode is a value swap, not a rebuild. */
+    --bg: #FBF4E6;
+    --surface: #FFFCF4;
+    --text: #2B2A24;
+    --text-muted: #6E6A5C;
+    --border: #2B2A24;
+    --shadow: #B7B2C8;
+    --brand: #2D7DD2;
+    --accent: #EE6C4D;
+    --pool: #2BA3AE;
+    --palm: #4C9A6A;
+    --sun: #F2C14E;
+  }
+  [data-theme="dark"] {
+    /* Sunset / night register — Nagai's evening palette */
+    --bg: #1B1730;
+    --surface: #261F3C;
+    --text: #F3EBDC;
+    --text-muted: #9C8FA8;
+    --border: #463E5E;
+    --shadow: #0E0A1C;
+    --brand: #5BA3E4;
+    --accent: #F2784F;
+    --pool: #36B3BE;
+    --palm: #5BB07C;
+    --sun: #F4C75E;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 "Hanken Grotesk", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "JetBrains Mono", monospace; }
+  .wordmark-font { font-family: "Silkscreen", monospace; letter-spacing: 0.04em; }
+
+  /* meta strip */
+  .meta {
+    background: var(--text); color: var(--bg);
+    font-size: 12px; padding: 7px 20px; text-align: center;
+  }
+  [data-theme="dark"] .meta { background: var(--border); color: var(--text); }
+
+  /* topbar (just for the dark-mode toggle) */
+  .topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 28px; border-bottom: 1.5px solid var(--border);
+    background: var(--surface);
+  }
+  .topbar .mark {
+    width: 22px; height: 22px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(
+      to bottom,
+      #3A4E8C 0 20%, #8B4E8E 20% 40%, #C2477E 40% 58%,
+      #EE6C4D 58% 76%, #F4A06A 76% 90%, #F2C14E 90% 100%
+    );
+  }
+  .topbar .mark::after {
+    content: ""; position: absolute;
+    width: 30%; height: 30%; top: 50%; right: 20%;
+    border-radius: 50%; background: #F4D662;
+  }
+  .topbar .wordmark { font-family: "Silkscreen", monospace; font-size: 17px; letter-spacing: 0.04em; }
+  .topbar .spacer { flex: 1; }
+  .btn-ghost {
+    font: inherit; font-weight: 700; font-size: 14px; padding: 8px 14px;
+    background: transparent; color: var(--text);
+    border: 1.5px solid var(--border); cursor: pointer;
+  }
+
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 36px 32px 96px; }
+  h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.01em; font-weight: 800; }
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--text-muted); margin: 56px 0 18px; font-weight: 700;
+  }
+  .lede { color: var(--text-muted); margin: 0 0 8px; max-width: 60ch; }
+
+  /* Swatch grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+  .swatch {
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .swatch .chip { height: 96px; }
+  .swatch .meta-row { padding: 10px 12px; }
+  .swatch .role { font-weight: 700; font-size: 14px; }
+  .swatch .token { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--text-muted); }
+  .swatch .hex { font-family: "JetBrains Mono", monospace; font-size: 12px; }
+
+  /* In-context blocks */
+  .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .card {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    box-shadow: 7px 7px 0 var(--shadow);   /* the flat Nagai shadow — no blur */
+    padding: 22px 24px;
+    flex: 1 1 260px;
+  }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--text-muted); font-size: 14px; }
+
+  /* Buttons — flat fills, hard edges, flat offset shadow */
+  .btn {
+    display: inline-block; font: inherit; font-weight: 700; font-size: 14px;
+    padding: 10px 18px; border: 1.5px solid var(--border); cursor: pointer;
+    box-shadow: 4px 4px 0 var(--shadow); color: var(--text);
+    transition: transform .04s, box-shadow .04s;
+  }
+  .btn:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 var(--shadow); }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-neutral { background: var(--surface); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; font-size: 12px; font-weight: 700;
+    border: 1.5px solid var(--border); border-radius: 999px;
+  }
+  .pill-live { background: var(--accent); color: #fff; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+         background: #fff; }
+  .blink { animation: blink 1.4s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .highlight-callout {
+    background: var(--accent); color: #fff; padding: 14px 18px;
+    border: 1.5px solid var(--border); box-shadow: 4px 4px 0 var(--shadow);
+    font-weight: 700; font-size: 14px;
+  }
+
+  /* Banded gradient sky — the Atmosphere layer */
+  .sky {
+    height: 200px; border: 1.5px solid var(--border); position: relative; overflow: hidden;
+    background: linear-gradient(
+      to bottom,
+      #1F5FA8 0 18%,
+      #2D7DD2 18% 36%,
+      #4A97D8 36% 52%,
+      #79B8E0 52% 66%,
+      #B3D9EC 66% 80%,
+      #E7F1F2 80% 100%
+    );
+  }
+  .sun-disc {
+    position: absolute; right: 48px; top: 42px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--sun); border: 1.5px solid #d9a93f;
+  }
+  .palm {
+    position: absolute; left: 40px; bottom: 0; width: 8px; height: 96px;
+    background: #2B2A24;
+  }
+  .palm::before, .palm::after {
+    content: ""; position: absolute; top: -6px; width: 46px; height: 18px;
+    background: #2B2A24; border-radius: 0 100% 0 0;
+  }
+  .palm::before { left: 6px; }
+  .palm::after  { right: 6px; transform: scaleX(-1); }
+
+  .sunset {
+    height: 120px; border: 1.5px solid var(--border);
+    background: linear-gradient(
+      to bottom,
+      #3A4E8C 0 20%,
+      #8B4E8E 20% 40%,
+      #C2477E 40% 58%,
+      #EE6C4D 58% 76%,
+      #F4A06A 76% 90%,
+      #F2C14E 90% 100%
+    );
+  }
+
+  /* Typography sample */
+  .type-sample { background: var(--surface); border: 1.5px solid var(--border);
+                  padding: 22px 26px; box-shadow: 7px 7px 0 var(--shadow); }
+  .type-sample .display-row {
+    font-size: 32px; font-weight: 800; line-height: 1.1; letter-spacing: 0.005em;
+    text-transform: uppercase; margin: 0 0 14px;
+  }
+  .type-sample .body-row { font-size: 16px; line-height: 1.55; margin: 0 0 16px; max-width: 60ch; }
+  .type-sample .mono-row { font-family: "JetBrains Mono", monospace; font-size: 13px;
+                            background: #211F2E; color: #E7E2D2;
+                            padding: 10px 14px; display: inline-block; }
+  .type-sample .logo-row { font-family: "Silkscreen", monospace; font-size: 22px;
+                            letter-spacing: 0.04em; }
+  .type-sample .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+                         color: var(--text-muted); font-weight: 700; margin-bottom: 4px; }
+
+  /* Canvas palette strips */
+  .palette-strip { display: flex; border: 1.5px solid var(--border); }
+  .palette-strip .cell { flex: 1; height: 56px; position: relative; }
+  .palette-strip.tall .cell { height: 64px; }
+  .palette-strip .cell span {
+    position: absolute; bottom: 4px; left: 0; right: 0; text-align: center;
+    font: 700 10px "JetBrains Mono", monospace; color: rgba(255,255,255,.85);
+    text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  }
+  .note { font-size: 13px; color: var(--text-muted); margin: 8px 0 0; }
+  .text-sample { font-size: 15px; }
+  .text-sample .muted { color: var(--text-muted); }
+  .strong-note {
+    background: var(--sun); color: #2B2A24; padding: 12px 16px;
+    border: 1.5px solid var(--border); font-size: 14px; margin: 16px 0;
+  }
+  [data-theme="dark"] .strong-note { color: #2B2A24; }
+
+  /* Mark / icon exploration */
+  .icon { border: 1.5px solid var(--border); display: inline-block; flex-shrink: 0; }
+  .icon.no-border { border: none; }
+  .icon-sunset {
+    background: linear-gradient(
+      to bottom,
+      #3A4E8C 0 20%, #8B4E8E 20% 40%, #C2477E 40% 58%,
+      #EE6C4D 58% 76%, #F4A06A 76% 90%, #F2C14E 90% 100%
+    );
+  }
+  .icon-day {
+    background: linear-gradient(
+      to bottom,
+      #1F5FA8 0 18%, #2D7DD2 18% 36%, #4A97D8 36% 52%,
+      #79B8E0 52% 66%, #B3D9EC 66% 80%, #E7F1F2 80% 100%
+    );
+  }
+  .icon.sun-set, .icon.sun-day { position: relative; overflow: hidden; }
+  .icon.sun-set::after, .icon.sun-day::after {
+    content: ""; position: absolute; border-radius: 50%;
+    width: 30%; height: 30%; background: #F4D662;
+  }
+  .icon.sun-day::after { top: 24%; right: 20%; }
+  .icon.sun-set::after { top: 50%; right: 20%; }
+  .icon-16 { width: 16px; height: 16px; }
+  .icon-22 { width: 22px; height: 22px; }
+  .icon-32 { width: 32px; height: 32px; }
+  .icon-48 { width: 48px; height: 48px; }
+  .icon-64 { width: 64px; height: 64px; }
+  .icon-96 { width: 96px; height: 96px; }
+  .icon-128 { width: 128px; height: 128px; }
+  .icon-row { display: flex; gap: 18px; align-items: flex-end; flex-wrap: wrap; margin: 10px 0 4px; }
+  .icon-cell { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .icon-cell .lbl { font-size: 11px; color: var(--text-muted); font-family: "JetBrains Mono", monospace; }
+  .wm-row { display: flex; align-items: center; gap: 32px; margin: 14px 0 4px; flex-wrap: wrap; }
+  .wm-pair { display: flex; align-items: center; gap: 10px; }
+  .wm-pair span.wm-text { font-family: "Silkscreen", monospace; font-size: 17px; letter-spacing: 0.04em; }
+  h3.sub-h { font-size:12px; text-transform:uppercase; letter-spacing:0.12em;
+             color:var(--text-muted); margin: 26px 0 6px; font-weight:700; }
+</style>
+</head>
+<body data-theme="light">
+
+<div class="meta">
+  Palette preview — proposed Nagai design language &nbsp;·&nbsp;
+  UI brand palette and canvas drawing palette are two different artifacts that share a mood
+</div>
+
+<div class="topbar">
+  <div class="mark"></div>
+  <div class="wordmark">BOTPLACE</div>
+  <div class="spacer"></div>
+  <button class="btn-ghost" onclick="toggleTheme()" id="themeBtn">Dusk mode</button>
+</div>
+
+<div class="wrap">
+
+  <h1>Botplace — Nagai Palette Preview</h1>
+  <p class="lede">A proposed visual identity anchored on Hiroshi Nagai's city-pop work. Two distinct palettes (UI brand + canvas drawing) plus typography, all rendered live. <strong>Click "Dusk mode"</strong> to preview the sunset/night register.</p>
+
+  <!-- ============ UI BRAND PALETTE ============ -->
+
+  <h2>UI brand palette · 10 roles (chrome only)</h2>
+  <p class="note" style="margin-top:-8px;margin-bottom:16px;">For the app chrome — identity, legibility, hierarchy. Muted and calm. Distinct from the canvas drawing palette below. Token names are semantic so dark mode is a value swap.</p>
+  <div class="grid">
+    <div class="swatch"><div class="chip" style="background:var(--bg)"></div><div class="meta-row"><div class="role">Background</div><div class="token">--bg</div><div class="hex">#FBF4E6 · #1B1730</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--surface)"></div><div class="meta-row"><div class="role">Surface</div><div class="token">--surface</div><div class="hex">#FFFCF4 · #261F3C</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--text)"></div><div class="meta-row"><div class="role">Text</div><div class="token">--text</div><div class="hex">#2B2A24 · #F3EBDC</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--text-muted)"></div><div class="meta-row"><div class="role">Text muted</div><div class="token">--text-muted</div><div class="hex">#6E6A5C · #9C8FA8</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--border)"></div><div class="meta-row"><div class="role">Border</div><div class="token">--border</div><div class="hex">#2B2A24 · #463E5E</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--shadow)"></div><div class="meta-row"><div class="role">Shadow</div><div class="token">--shadow</div><div class="hex">#B7B2C8 · #0E0A1C</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--brand)"></div><div class="meta-row"><div class="role">Brand / primary CTA</div><div class="token">--brand</div><div class="hex">#2D7DD2 · #5BA3E4</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--accent)"></div><div class="meta-row"><div class="role">Accent / highlight</div><div class="token">--accent</div><div class="hex">#EE6C4D · #F2784F</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--pool)"></div><div class="meta-row"><div class="role">Pool (info)</div><div class="token">--pool</div><div class="hex">#2BA3AE · #36B3BE</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--palm)"></div><div class="meta-row"><div class="role">Palm (success)</div><div class="token">--palm</div><div class="hex">#4C9A6A · #5BB07C</div></div></div>
+    <div class="swatch"><div class="chip" style="background:var(--sun)"></div><div class="meta-row"><div class="role">Sun (warning)</div><div class="token">--sun</div><div class="hex">#F2C14E · #F4C75E</div></div></div>
+  </div>
+  <p class="note">Each swatch shows the role + token + light/dark hex pair. Toggle Dusk mode to see them swap.</p>
+
+  <!-- ============ TYPOGRAPHY ============ -->
+
+  <h2>Typography</h2>
+  <p class="note" style="margin-top:-8px;margin-bottom:16px;">Type stays out of the way; color and form carry the era. One warm grotesque for display + body, one mono for code, a pixel/Emigre face for the wordmark only.</p>
+  <div class="type-sample">
+    <div class="label">Display — Hanken Grotesk 800, uppercase, modernist-block</div>
+    <div class="display-row">A living canvas, painted by bots.</div>
+
+    <div class="label">Body — Hanken Grotesk 400, neutral and readable</div>
+    <div class="body-row">Botplace is an open pixel canvas where autonomous bots paint, one pixel at a time. The bot API is the product; coding agents are the contributor. Type does the work of communicating; color and the canvas itself carry the era.</div>
+
+    <div class="label">Mono — JetBrains Mono, for code &amp; bot identifiers</div>
+    <div class="mono-row">POST /api/v1/pixels  · bot_id=conway-01  · color=3</div>
+
+    <div class="label" style="margin-top:18px;">Wordmark — Silkscreen, reserved for the logo only</div>
+    <div class="logo-row">BOTPLACE</div>
+  </div>
+
+  <!-- ============ SYSTEM LAYER ============ -->
+
+  <h2>System layer · text legibility</h2>
+  <div class="row">
+    <div class="card" style="background:var(--bg)">
+      <h3>On background</h3>
+      <p class="text-sample" style="color:var(--text)">Primary text on the warm sand background. Calm, readable, warm — not stark.</p>
+      <p class="text-sample muted">Muted text for secondary content and captions.</p>
+    </div>
+    <div class="card">
+      <h3>On surface</h3>
+      <p class="text-sample" style="color:var(--text)">Primary text on a panel surface. Surface is a hair lighter than background.</p>
+      <p class="text-sample muted">Muted text for secondary content and captions.</p>
+    </div>
+  </div>
+
+  <h2>System layer · buttons &amp; the flat Nagai shadow</h2>
+  <div class="row" style="align-items:center">
+    <button class="btn btn-primary">Primary action</button>
+    <button class="btn btn-neutral">Neutral</button>
+    <span class="pill" style="background:var(--pool);color:#fff;">info</span>
+    <span class="pill" style="background:var(--palm);color:#fff;">success</span>
+    <span class="pill" style="background:var(--sun);color:#2B2A24;">warning</span>
+  </div>
+  <p class="note">Shadows are flat, hard-edged, offset blocks of <code class="mono">--shadow</code> — no blur. Press a button to see the offset collapse. This is Nagai's painted wall-shadow, used as the app's one elevation rule. <strong>Primary CTAs use <code class="mono">--brand</code> (blue)</strong> — never coral, because a red-family primary reads as destructive. Error/destructive states use coral with text + icon disambiguating context — no separate <code class="mono">--danger</code> token for now (see brainstorm).</p>
+
+  <h2>Accent layer · where coral is right</h2>
+  <p class="note" style="margin-top:-8px;margin-bottom:16px;">Coral (<code class="mono">--accent</code>) is for <em>look here</em>, never <em>do this</em>. Live indicators, hot states, attention badges, highlight callouts, the wordmark accent square. Used sparingly — the lone red car in the composition.</p>
+  <div class="row" style="align-items:center">
+    <span class="pill pill-live"><span class="dot blink"></span>LIVE</span>
+    <span class="pill pill-live">NEW</span>
+    <span class="pill pill-live">42 painting now</span>
+    <div class="highlight-callout">37 bots active · 1,284,902 pixels painted today</div>
+  </div>
+
+  <h2>System layer · panels</h2>
+  <div class="row">
+    <div class="card">
+      <h3>A content panel</h3>
+      <p>Flat fill, ink border, flat offset shadow. The chrome stays quiet so illustration can carry the emotion.</p>
+    </div>
+    <div class="card">
+      <h3>Another panel</h3>
+      <p>Accent coral is reserved for the one thing that matters on a screen — the "lone red car" in the composition.</p>
+      <p style="margin-top:12px"><button class="btn btn-primary">Do the thing</button></p>
+    </div>
+  </div>
+
+  <!-- ============ ATMOSPHERE LAYER ============ -->
+
+  <h2>Atmosphere layer · banded gradient sky (daytime register)</h2>
+  <div class="sky">
+    <div class="sun-disc"></div>
+    <div class="palm"></div>
+  </div>
+  <p class="note">Gradients are <strong>banded</strong> — discrete hard-edged steps, not a smooth blend. This is the "feels like pixel art" warmth. Lives in heroes / loading screens / empty states, never on buttons.</p>
+
+  <h2>Atmosphere layer · sunset register (dark-mode source)</h2>
+  <div class="sunset"></div>
+  <p class="note">Nagai's evening palette: indigo → magenta → coral → peach → gold. The source for dark mode chrome — toggle Dusk mode at the top.</p>
+
+  <!-- ============ MARK / ICON EXPLORATION ============ -->
+
+  <h2>Mark / icon exploration</h2>
+  <p class="note" style="margin-top:-8px;margin-bottom:14px;">The current 4-square mark is generic. Trying the Nagai banded sky as the mark — distilled directly from the atmosphere layer above, scales from favicon (16px) to hero (128px+). Four variants below: sunset and daytime registers, with and without a sun disc.</p>
+
+  <h3 class="sub-h">Sunset register · bands only</h3>
+  <div class="icon-row">
+    <div class="icon-cell"><span class="icon icon-sunset icon-16"></span><span class="lbl">16</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset icon-22"></span><span class="lbl">22</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset icon-32"></span><span class="lbl">32</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset icon-48"></span><span class="lbl">48</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset icon-64"></span><span class="lbl">64</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset icon-96"></span><span class="lbl">96</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset icon-128"></span><span class="lbl">128</span></div>
+  </div>
+
+  <h3 class="sub-h">Sunset register · with sun disc</h3>
+  <div class="icon-row">
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-16"></span><span class="lbl">16</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-22"></span><span class="lbl">22</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-32"></span><span class="lbl">32</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-48"></span><span class="lbl">48</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-64"></span><span class="lbl">64</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-96"></span><span class="lbl">96</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set icon-128"></span><span class="lbl">128</span></div>
+  </div>
+
+  <h3 class="sub-h">Daytime register · bands only</h3>
+  <div class="icon-row">
+    <div class="icon-cell"><span class="icon icon-day icon-16"></span><span class="lbl">16</span></div>
+    <div class="icon-cell"><span class="icon icon-day icon-22"></span><span class="lbl">22</span></div>
+    <div class="icon-cell"><span class="icon icon-day icon-32"></span><span class="lbl">32</span></div>
+    <div class="icon-cell"><span class="icon icon-day icon-48"></span><span class="lbl">48</span></div>
+    <div class="icon-cell"><span class="icon icon-day icon-64"></span><span class="lbl">64</span></div>
+    <div class="icon-cell"><span class="icon icon-day icon-96"></span><span class="lbl">96</span></div>
+    <div class="icon-cell"><span class="icon icon-day icon-128"></span><span class="lbl">128</span></div>
+  </div>
+
+  <h3 class="sub-h">Daytime register · with sun disc</h3>
+  <div class="icon-row">
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-16"></span><span class="lbl">16</span></div>
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-22"></span><span class="lbl">22</span></div>
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-32"></span><span class="lbl">32</span></div>
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-48"></span><span class="lbl">48</span></div>
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-64"></span><span class="lbl">64</span></div>
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-96"></span><span class="lbl">96</span></div>
+    <div class="icon-cell"><span class="icon icon-day sun-day icon-128"></span><span class="lbl">128</span></div>
+  </div>
+
+  <h3 class="sub-h">Sunset + sun disc · borderless (recommended for the actual mark)</h3>
+  <div class="icon-row">
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-16"></span><span class="lbl">16</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-22"></span><span class="lbl">22</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-32"></span><span class="lbl">32</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-48"></span><span class="lbl">48</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-64"></span><span class="lbl">64</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-96"></span><span class="lbl">96</span></div>
+    <div class="icon-cell"><span class="icon icon-sunset sun-set no-border icon-128"></span><span class="lbl">128</span></div>
+  </div>
+
+  <h3 class="sub-h">Wordmark pairings at topbar size (22px) · borderless</h3>
+  <div class="wm-row">
+    <div class="wm-pair"><span class="icon icon-sunset sun-set no-border icon-22"></span><span class="wm-text">BOTPLACE</span></div>
+    <div class="wm-pair"><span class="icon icon-sunset sun-set icon-22"></span><span class="wm-text">BOTPLACE</span></div>
+    <div class="wm-pair"><span class="icon icon-day sun-day no-border icon-22"></span><span class="wm-text">BOTPLACE</span></div>
+    <div class="wm-pair"><span class="icon icon-day sun-day icon-22"></span><span class="wm-text">BOTPLACE</span></div>
+  </div>
+  <p class="note" style="margin-top:14px;">My read: <strong>sunset with sun disc</strong> is the strongest — more memorable than daytime (more chromatic drama, more "logo-like"), and the sun reads as a focal point that completes the "sun setting over the horizon" metaphor without anyone having to be told. Daytime is more refined but less distinctive — sky gradients alone are common enough that a sky-only mark could read generic. The sun disc survives down to 16px legibly. Pick whichever lands.</p>
+
+  <!-- ============ CANVAS DRAWING PALETTE ============ -->
+
+  <h2>Canvas drawing palette · current vs. proposed direction</h2>
+  <p class="note" style="margin-top:-8px;margin-bottom:14px;">
+    A different artifact from the UI palette above. Its job: let bots paint <em>arbitrary, legible</em> images from a tiny color count. Needs proper value ramps, hue-shifting, neutrals, full hue coverage — a craft, not a brand set. The brainstorm's decision: adopt the professionally-honed <strong>Endesga (EDG) family</strong>.
+  </p>
+
+  <p class="note" style="margin:18px 0 6px"><strong>Current canvas</strong> — DawnBringer's 8 (<code class="mono">PALETTE_V1</code>) — competent generic game palette, cool-leaning</p>
+  <div class="palette-strip">
+    <div class="cell" style="background:#000000"><span>0</span></div>
+    <div class="cell" style="background:#55415f"><span>1</span></div>
+    <div class="cell" style="background:#646964"><span>2</span></div>
+    <div class="cell" style="background:#d77355"><span>3</span></div>
+    <div class="cell" style="background:#508cd7"><span>4</span></div>
+    <div class="cell" style="background:#64b964"><span>5</span></div>
+    <div class="cell" style="background:#e6c86e"><span>6</span></div>
+    <div class="cell" style="background:#dcf5ff"><span>7</span></div>
+  </div>
+
+  <p class="note" style="margin:18px 0 6px"><strong>EDG8</strong> — proposed <code class="mono">paletteVersion: 2</code> · the canvas scene in the mockup is drawn from this</p>
+  <div class="palette-strip tall">
+    <div class="cell" style="background:#fdfdf8"><span style="color:#2B2A24;text-shadow:none">0</span></div>
+    <div class="cell" style="background:#d32734"><span>1</span></div>
+    <div class="cell" style="background:#da7d22"><span>2</span></div>
+    <div class="cell" style="background:#e6da29"><span style="color:#2B2A24;text-shadow:none">3</span></div>
+    <div class="cell" style="background:#28c641"><span>4</span></div>
+    <div class="cell" style="background:#2d93dd"><span>5</span></div>
+    <div class="cell" style="background:#7b53ad"><span>6</span></div>
+    <div class="cell" style="background:#1b1c33"><span>7</span></div>
+  </div>
+
+  <p class="note" style="margin:18px 0 6px"><strong>EDG16</strong> — natural home for the tier-2 palette when the tier mechanic ships</p>
+  <div class="palette-strip">
+    <div class="cell" style="background:#e4a672"></div>
+    <div class="cell" style="background:#b86f50"></div>
+    <div class="cell" style="background:#743f39"></div>
+    <div class="cell" style="background:#3f2832"></div>
+    <div class="cell" style="background:#9e2835"></div>
+    <div class="cell" style="background:#e53b44"></div>
+    <div class="cell" style="background:#fb922b"></div>
+    <div class="cell" style="background:#ffe762"></div>
+    <div class="cell" style="background:#63c64d"></div>
+    <div class="cell" style="background:#327345"></div>
+    <div class="cell" style="background:#193d3f"></div>
+    <div class="cell" style="background:#4f6781"></div>
+    <div class="cell" style="background:#afbfd2"></div>
+    <div class="cell" style="background:#ffffff"></div>
+    <div class="cell" style="background:#2ce8f4"></div>
+    <div class="cell" style="background:#0484d1"></div>
+  </div>
+
+  <p class="note" style="margin:18px 0 6px"><strong>EDG32</strong> — natural home for the tier-3 palette · 194k+ downloads on Lospec · proper ramps + neutrals + full hue coverage</p>
+  <div class="palette-strip">
+    <div class="cell" style="background:#be4a2f"></div>
+    <div class="cell" style="background:#d77643"></div>
+    <div class="cell" style="background:#ead4aa"></div>
+    <div class="cell" style="background:#e4a672"></div>
+    <div class="cell" style="background:#b86f50"></div>
+    <div class="cell" style="background:#733e39"></div>
+    <div class="cell" style="background:#3e2731"></div>
+    <div class="cell" style="background:#a22633"></div>
+    <div class="cell" style="background:#e43b44"></div>
+    <div class="cell" style="background:#f77622"></div>
+    <div class="cell" style="background:#feae34"></div>
+    <div class="cell" style="background:#fee761"></div>
+    <div class="cell" style="background:#63c74d"></div>
+    <div class="cell" style="background:#3e8948"></div>
+    <div class="cell" style="background:#265c42"></div>
+    <div class="cell" style="background:#193c3e"></div>
+    <div class="cell" style="background:#124e89"></div>
+    <div class="cell" style="background:#0099db"></div>
+    <div class="cell" style="background:#2ce8f5"></div>
+    <div class="cell" style="background:#ffffff"></div>
+    <div class="cell" style="background:#c0cbdc"></div>
+    <div class="cell" style="background:#8b9bb4"></div>
+    <div class="cell" style="background:#5a6988"></div>
+    <div class="cell" style="background:#3a4466"></div>
+    <div class="cell" style="background:#262b44"></div>
+    <div class="cell" style="background:#181425"></div>
+    <div class="cell" style="background:#ff0044"></div>
+    <div class="cell" style="background:#68386c"></div>
+    <div class="cell" style="background:#b55088"></div>
+    <div class="cell" style="background:#f6757a"></div>
+    <div class="cell" style="background:#e8b796"></div>
+    <div class="cell" style="background:#c28569"></div>
+  </div>
+
+  <div class="strong-note">
+    Note — EDG8/16/32 are <strong>not strict supersets</strong> of each other. They're an aesthetically coherent family by the same artist, but a bot painting in EDG8 colors would not have valid indices on an EDG32 canvas without remapping. Whether the 8/16/32 tiers need nesting is still open — deferred to the tier-mechanic milestone, possibly with a designer partnership.
+  </div>
+
+</div>
+
+<script>
+function toggleTheme(){
+  const b=document.body;
+  const dark=b.getAttribute('data-theme')==='dark';
+  b.setAttribute('data-theme',dark?'light':'dark');
+  document.getElementById('themeBtn').textContent=dark?'Dusk mode':'Day mode';
+}
+</script>
+</body>
+</html>
