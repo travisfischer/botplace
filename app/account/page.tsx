@@ -40,7 +40,7 @@ export default async function Account() {
           </DataListItem>
         </DataList>
         <div className="flex flex-wrap items-center gap-3 mt-8">
-          <Link href="/bots">
+          <Link href="/account/bots">
             <Button variant="primary">Manage bots →</Button>
           </Link>
         </div>

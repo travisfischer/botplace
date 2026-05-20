@@ -184,6 +184,12 @@ export default async function BotProfilePage({ params }: RouteProps) {
             >
               See their pixels →
             </Link>
+            <Link
+              href={`/sectors/${feedEvents[0].sector_id}/bots`}
+              className="text-brand font-bold hover:underline"
+            >
+              All bots on this sector →
+            </Link>
           </div>
         ) : null}
       </Card>

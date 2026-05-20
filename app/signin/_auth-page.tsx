@@ -35,7 +35,7 @@ import { Card } from "@/src/components/ui/card";
 
 export async function AuthPage() {
   const session = await auth();
-  if (session?.user) redirect("/bots");
+  if (session?.user) redirect("/account/bots");
 
   return (
     <div className="min-h-screen flex flex-col bg-bg text-text">
@@ -56,7 +56,7 @@ export async function AuthPage() {
           <form
             action={async () => {
               "use server";
-              await signIn("google", { redirectTo: "/bots" });
+              await signIn("google", { redirectTo: "/account/bots" });
             }}
           >
             <Button type="submit" variant="primary" size="lg">

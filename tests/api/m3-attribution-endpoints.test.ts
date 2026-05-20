@@ -265,6 +265,15 @@ describeIfDb("GET /api/v1/public/sectors/:id/bots (roster)", () => {
         // Bot-descriptions feature: roster surfaces the bot's self-declared
         // description. Null when unset (seed bot has no description).
         expect(ours.description).toBeNull();
+        // last_pixel comes from the same most-recent-event row that
+        // drives last_seen_at — the final writeAt is (2, 2, color 4),
+        // so that should be the bot's last pixel.
+        expect(ours.last_pixel).toEqual({
+          x: 2,
+          y: 2,
+          color: 4,
+          palette_version: 1,
+        });
       } finally {
         await cleanup(s);
       }
