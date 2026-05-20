@@ -1,4 +1,4 @@
-// Server actions for the /bots UI. Each is a thin wrapper around the
+// Server actions for the /account/bots UI. Each is a thin wrapper around the
 // equivalent business-logic function in src/<domain>/, identical to what
 // the HTTP route handlers call. The UI is therefore a thin client of the
 // same domain logic — agent-native principle, applied at the action layer.
@@ -83,7 +83,7 @@ export async function createBotAction(
         actorKind: AuditActorKind.OWNER,
       },
     });
-    revalidatePath("/bots");
+    revalidatePath("/account/bots");
     return {
       ok: true,
       plaintext: result.apiKey.plaintext,
@@ -130,7 +130,7 @@ export async function mintKeyAction(formData: FormData): Promise<void> {
       actorKind: AuditActorKind.OWNER,
     },
   });
-  revalidatePath("/bots");
+  revalidatePath("/account/bots");
 }
 
 export async function revokeKeyAction(formData: FormData): Promise<void> {
@@ -149,7 +149,7 @@ export async function revokeKeyAction(formData: FormData): Promise<void> {
       actorKind: AuditActorKind.OWNER,
     },
   });
-  revalidatePath("/bots");
+  revalidatePath("/account/bots");
 }
 
 export async function createPatAction(
@@ -176,7 +176,7 @@ export async function createPatAction(
       actorKind: AuditActorKind.OWNER,
     },
   });
-  revalidatePath("/bots");
+  revalidatePath("/account/bots");
   return {
     ok: true,
     plaintext: result.plaintext,
@@ -199,7 +199,7 @@ export async function revokePatAction(formData: FormData): Promise<void> {
       actorKind: AuditActorKind.OWNER,
     },
   });
-  revalidatePath("/bots");
+  revalidatePath("/account/bots");
 }
 
 export async function listPatsForCurrentOwner() {
@@ -321,6 +321,6 @@ export async function updateDescriptionAction(
     latency_ms: Date.now() - startedAt,
   });
 
-  revalidatePath("/bots");
+  revalidatePath("/account/bots");
   return { ok: true, botId, requestId };
 }

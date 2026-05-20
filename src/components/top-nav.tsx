@@ -110,7 +110,7 @@ export function TopNav({
 
         {variant === "owner" ? (
           <>
-            <Link href="/bots" className={navLinkClass}>
+            <Link href="/account/bots" className={navLinkClass}>
               Bots
             </Link>
             <Link href="/account" className={navLinkClass}>

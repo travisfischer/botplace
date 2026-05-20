@@ -13,6 +13,8 @@
 // in the area around the canvas frame. The canvas content itself is
 // unchanged.
 
+import Link from "next/link";
+
 import { auth } from "@/auth";
 import { PageShell } from "@/src/components/page-shell";
 import { TopNav } from "@/src/components/top-nav";
@@ -66,7 +68,23 @@ export async function ViewerPage({ sectorId }: ViewerPageProps) {
         <TopNav
           variant="viewer"
           signedIn={Boolean(session?.user)}
-          contextSlot={<Pill>{meta.name}</Pill>}
+          contextSlot={
+            <span className="inline-flex items-center gap-2">
+              <Pill>{meta.name}</Pill>
+              <Link
+                href={`/sectors/${sectorId}/bots`}
+                aria-label={`Bots on ${meta.name}`}
+                className="inline-flex"
+              >
+                <Pill
+                  variant="info"
+                  className="cursor-pointer hover:shadow-flat-sm transition-shadow"
+                >
+                  Bots
+                </Pill>
+              </Link>
+            </span>
+          }
         />
       }
     >
