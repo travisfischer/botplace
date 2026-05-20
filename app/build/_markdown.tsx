@@ -1,17 +1,15 @@
-// Server component wrapping react-markdown with viewer-style typography.
-// All the /build/* pages render their content through this. Theme A's
-// choice to colocate markdown as TS string constants means the same
-// source serves the rendered HTML, /api/build-md/<slug>, and
+// Server component wrapping react-markdown with token-driven prose
+// styling. All the /build/* pages render their content through this.
+// Theme A's choice to colocate markdown as TS string constants means
+// the same source serves the rendered HTML, /api/build-md/<slug>, and
 // /agents.md — no source-of-truth drift.
+//
+// Per requirement-20260520-0914 F12: font-display headings, font-mono
+// code, --brand links, --surface code-fence backgrounds with --border
+// ink borders.
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-const MD_STYLE: React.CSSProperties = {
-  // Use system font, viewer-aligned colors. Keep h2/h3 pulled-up on
-  // top margin so the content reads as a continuous flow rather than
-  // disconnected sections.
-};
 
 interface MarkdownContentProps {
   source: string;
@@ -19,7 +17,7 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ source }: MarkdownContentProps) {
   return (
-    <div style={MD_STYLE} className="md-content">
+    <div className="md-content text-text leading-[1.6]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -27,28 +25,22 @@ export function MarkdownContent({ source }: MarkdownContentProps) {
             <a
               href={href}
               {...props}
-              style={{ color: "#508cd7" }}
+              className="text-brand font-bold hover:underline"
               target={href?.startsWith("http") ? "_blank" : undefined}
-              rel={href?.startsWith("http") ? "noopener noreferrer" : undefined}
+              rel={
+                href?.startsWith("http") ? "noopener noreferrer" : undefined
+              }
             >
               {children}
             </a>
           ),
           code: ({ className, children, ...props }) => {
-            // Inline code (no language) gets a subtle pill; fenced
-            // code blocks (with language) keep block styling via
-            // the parent <pre> tag styled below.
             const isInline = !className;
             if (isInline) {
               return (
                 <code
                   {...props}
-                  style={{
-                    background: "rgba(255,255,255,0.08)",
-                    padding: "1px 5px",
-                    borderRadius: 3,
-                    fontSize: "0.9em",
-                  }}
+                  className="font-mono text-[0.9em] bg-bg border-[1.5px] border-border px-1.5 py-px"
                 >
                   {children}
                 </code>
@@ -61,75 +53,67 @@ export function MarkdownContent({ source }: MarkdownContentProps) {
             );
           },
           pre: ({ children }) => (
-            <pre
-              style={{
-                background: "#1a1a26",
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 6,
-                padding: "12px 14px",
-                overflowX: "auto",
-                fontSize: 13,
-                lineHeight: 1.5,
-              }}
-            >
+            <pre className="font-mono text-[13px] leading-[1.55] bg-bg border-[1.5px] border-border shadow-flat-sm p-3.5 my-5 overflow-x-auto">
               {children}
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote
-              style={{
-                margin: "16px 0",
-                paddingLeft: 12,
-                borderLeft: "3px solid #508cd7",
-                opacity: 0.85,
-              }}
-            >
+            <blockquote className="my-4 pl-3.5 border-l-[3px] border-brand text-text-muted">
               {children}
             </blockquote>
           ),
           table: ({ children }) => (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  borderCollapse: "collapse",
-                  width: "100%",
-                  fontSize: 13,
-                }}
-              >
+            <div className="overflow-x-auto border-[1.5px] border-border my-5">
+              <table className="w-full border-collapse text-sm">
                 {children}
               </table>
             </div>
           ),
+          thead: ({ children }) => (
+            <thead className="bg-bg border-b-[1.5px] border-border">
+              {children}
+            </thead>
+          ),
           th: ({ children }) => (
-            <th
-              style={{
-                textAlign: "left",
-                padding: "6px 10px",
-                borderBottom: "1px solid rgba(255,255,255,0.2)",
-                fontWeight: 600,
-              }}
-            >
+            <th className="text-left px-3 py-2 font-bold uppercase tracking-[0.08em] text-xs text-text-muted">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td
-              style={{
-                padding: "6px 10px",
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
-              }}
-            >
+            <td className="px-3 py-2 align-top border-t-[1.5px] border-border first:border-t-0">
               {children}
             </td>
           ),
           h1: ({ children }) => (
-            <h1 style={{ marginTop: 32, fontSize: 28 }}>{children}</h1>
+            <h1 className="font-display font-extrabold uppercase tracking-tight text-3xl mt-10 mb-4 leading-tight">
+              {children}
+            </h1>
           ),
           h2: ({ children }) => (
-            <h2 style={{ marginTop: 28, fontSize: 22 }}>{children}</h2>
+            <h2 className="font-display font-extrabold uppercase tracking-tight text-xl mt-8 mb-3 leading-tight">
+              {children}
+            </h2>
           ),
           h3: ({ children }) => (
-            <h3 style={{ marginTop: 22, fontSize: 17 }}>{children}</h3>
+            <h3 className="font-display font-bold uppercase tracking-tight text-base mt-6 mb-2 leading-tight">
+              {children}
+            </h3>
+          ),
+          p: ({ children }) => <p className="my-3">{children}</p>,
+          ul: ({ children }) => (
+            <ul className="my-3 pl-6 list-disc marker:text-text-muted">
+              {children}
+            </ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="my-3 pl-6 list-decimal marker:text-text-muted">
+              {children}
+            </ol>
+          ),
+          li: ({ children }) => <li className="my-1">{children}</li>,
+          hr: () => <hr className="my-8 border-0 h-px bg-border" />,
+          strong: ({ children }) => (
+            <strong className="font-bold text-text">{children}</strong>
           ),
         }}
       >
