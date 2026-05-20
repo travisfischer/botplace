@@ -58,8 +58,8 @@ enum AuditActorKind {
 model Owner {
   id                   String                     @id @default(cuid())
   googleSub            String                     @unique @map("google_sub") // Google OAuth `sub`
-  email                String                                                // PII
-  displayName          String                     @map("display_name")       // PII
+  email                String // PII
+  displayName          String                     @map("display_name") // PII
   createdAt            DateTime                   @default(now()) @map("created_at")
   bots                 Bot[]
   personalAccessTokens OwnerPersonalAccessToken[]
@@ -74,8 +74,8 @@ model OwnerPersonalAccessToken {
   // that we don't want vanishing on owner delete.
   owner      Owner     @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   tokenHash  String    @unique @map("token_hash") // HMAC-SHA-256(token, BOTPLACE_API_KEY_PEPPER)
-  prefix     String                               // "bp_pat_<8-char-prefix>" for log display
-  name       String                               // owner-supplied label, e.g. "my-laptop"
+  prefix     String // "bp_pat_<8-char-prefix>" for log display
+  name       String // owner-supplied label, e.g. "my-laptop"
   createdAt  DateTime  @default(now()) @map("created_at")
   revokedAt  DateTime? @map("revoked_at")
   lastUsedAt DateTime? @map("last_used_at")
@@ -87,35 +87,37 @@ model OwnerPersonalAccessToken {
 }
 
 model Bot {
-  id          String       @id @default(cuid())
-  ownerId     String       @map("owner_id")
+  id                   String       @id @default(cuid())
+  ownerId              String       @map("owner_id")
   // Restrict: a bot's PixelEvent rows are append-only audit data; cascading
   // a bot delete would silently truncate the canvas's write history.
-  owner       Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner                Owner        @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   // Globally-unique slug. Canonical public identifier in API responses,
   // logs, audit, and cross-owner attribution. Owner picks at create.
   // Validation lives in `src/bots/handle.ts`; the DB layer enforces only
   // uniqueness. Persistent — no rename feature in M3.
-  handle      String       @unique
+  handle               String       @unique
   // Per-owner-unique label. Permissive validation up to MAX_NAME_LENGTH.
   // Freely editable. Replaces the M1/M2 `name` column.
-  displayName String       @map("display_name")
+  displayName          String       @map("display_name")
   // Self-declared description. Optional, freely editable by the bot
   // itself via `PATCH /api/v1/bots/me` or by the owner. Length bound is
   // MAX_DESCRIPTION_LENGTH. Stored post-moderation (URLs redacted to
   // `[link]`; deny-list matches reject the write before it lands here).
-  description String?      @db.Text
+  description          String?      @db.Text
   // Set every time `description` is written. Null while description is
   // unset. Surfaces on read endpoints so callers can detect staleness
   // without a separate audit log.
-  descriptionUpdatedAt DateTime? @map("description_updated_at")
-  status      BotStatus    @default(ACTIVE)
+  descriptionUpdatedAt DateTime?    @map("description_updated_at")
+  status               BotStatus    @default(ACTIVE)
   // Rate-limit tier. FREE on every owner-mint; POWER only via
   // `pnpm admin:set-bot-tier`. See enum doc above.
-  rateTier    BotRateTier  @default(FREE) @map("rate_tier")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  apiKeys     BotApiKey[]
-  events      PixelEvent[]
+  rateTier             BotRateTier  @default(FREE) @map("rate_tier")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  apiKeys              BotApiKey[]
+  events               PixelEvent[]
+  posts                Post[]
+  replies              Reply[]
 
   // Per-owner uniqueness on the human label keeps the owner's "my bots"
   // listing readable. The unique index also serves the (ownerId)-prefix
@@ -132,11 +134,13 @@ model BotApiKey {
   // across rotations. Losing key rows would orphan the audit trail.
   bot        Bot          @relation(fields: [botId], references: [id], onDelete: Restrict)
   keyHash    String       @unique @map("key_hash") // HMAC-SHA-256(key, BOTPLACE_API_KEY_PEPPER) — uniqueness is a security invariant
-  prefix     String                                // "bp_live_<8-char-prefix>" for log display
+  prefix     String // "bp_live_<8-char-prefix>" for log display
   createdAt  DateTime     @default(now()) @map("created_at")
   revokedAt  DateTime?    @map("revoked_at")
   lastUsedAt DateTime?    @map("last_used_at")
   events     PixelEvent[]
+  posts      Post[]
+  replies    Reply[]
 
   // Hot read: active-keys-for-bot. Compound with `revokedAt` lets the
   // common `WHERE bot_id = X AND revoked_at IS NULL` filter ride the index.
@@ -145,7 +149,7 @@ model BotApiKey {
 }
 
 model Sector {
-  id             String        @id                              // slug, e.g. "sector-1"
+  id             String        @id // slug, e.g. "sector-1"
   name           String
   width          Int
   height         Int
@@ -153,6 +157,8 @@ model Sector {
   createdAt      DateTime      @default(now()) @map("created_at")
   chunks         SectorChunk[]
   events         PixelEvent[]
+  posts          Post[]
+  replies        Reply[]
 
   @@map("sectors")
 }
@@ -162,8 +168,8 @@ model SectorChunk {
   sector    Sector   @relation(fields: [sectorId], references: [id], onDelete: Cascade)
   chunkX    Int      @map("chunk_x")
   chunkY    Int      @map("chunk_y")
-  data      Bytes                      // packed palette indices, 1 byte per pixel
-  version   BigInt   @default(0)       // monotonic per chunk; SELECT FOR UPDATE inside tx
+  data      Bytes // packed palette indices, 1 byte per pixel
+  version   BigInt   @default(0) // monotonic per chunk; SELECT FOR UPDATE inside tx
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@id([sectorId, chunkX, chunkY])
@@ -176,16 +182,16 @@ model SectorChunk {
 // would create undebuggable holes in the replay stream.
 model PixelEvent {
   id                BigInt    @id @default(autoincrement())
-  requestId         String    @map("request_id")           // joins HTTP log + tx + event log
+  requestId         String    @map("request_id") // joins HTTP log + tx + event log
   sectorId          String    @map("sector_id")
   sector            Sector    @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   x                 Int
   y                 Int
-  color             Int                                    // palette index
-  paletteVersion    Int       @map("palette_version")     // copied from sector at write time
+  color             Int // palette index
+  paletteVersion    Int       @map("palette_version") // copied from sector at write time
   botId             String    @map("bot_id")
   bot               Bot       @relation(fields: [botId], references: [id], onDelete: Restrict)
-  apiKeyId          String    @map("api_key_id")          // durable credential audit across rotations
+  apiKeyId          String    @map("api_key_id") // durable credential audit across rotations
   apiKey            BotApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
   chunkVersionAfter BigInt    @map("chunk_version_after")
   // Optional bot-supplied commentary attached to this specific pixel
@@ -198,8 +204,8 @@ model PixelEvent {
   comment           String?   @db.Text
   createdAt         DateTime  @default(now()) @map("created_at")
 
-  @@index([sectorId, id])                                  // deterministic replay ordering
-  @@index([sectorId, createdAt])                           // time-window queries
+  @@index([sectorId, id]) // deterministic replay ordering
+  @@index([sectorId, createdAt]) // time-window queries
   @@index([botId, createdAt])
   @@index([apiKeyId])
   @@map("pixel_events")
@@ -208,19 +214,98 @@ model PixelEvent {
 model AdminAuditEvent {
   id          BigInt         @id @default(autoincrement())
   requestId   String         @map("request_id")
-  action      String                                              // e.g. "revoke_bot_key"
+  action      String // e.g. "revoke_bot_key"
   // Normalized actor type. M3 backfills pre-existing rows to
   // `ADMIN_TOKEN` since every prior audit row came through the
   // ADMIN_TOKEN-gated admin route. New audit rows from owner-initiated
   // mutations carry `OWNER`; operator scripts (seed-launch-bots) carry
   // `SEED_SCRIPT`.
   actorKind   AuditActorKind @default(ADMIN_TOKEN) @map("actor_kind")
-  targetId    String?        @map("target_id")                    // bot id, key id, etc.
-  payloadJson Json           @map("payload_json")                 // before/after snapshot
+  targetId    String?        @map("target_id") // bot id, key id, etc.
+  payloadJson Json           @map("payload_json") // before/after snapshot
   sourceIp    String         @map("source_ip")
   createdAt   DateTime       @default(now()) @map("created_at")
 
   @@index([action, createdAt])
   @@index([actorKind, createdAt])
   @@map("admin_audit_events")
+}
+
+// Per-sector forum post. Forum-shaped (title + description + body +
+// labels), not chat-shaped. Bot-authored, write-once after creation
+// (no edits). Admin can soft-delete via `deletedAt` — public reads
+// filter null. See requirement-20260520-1441 for the design rationale.
+//
+// `bot_id` and `api_key_id` are Restrict-on-delete: post history is
+// part of the public discourse record; losing parent rows would
+// silently truncate it.
+model Post {
+  id              BigInt    @id @default(autoincrement())
+  sectorId        String    @map("sector_id")
+  sector          Sector    @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  botId           String    @map("bot_id")
+  bot             Bot       @relation(fields: [botId], references: [id], onDelete: Restrict)
+  // Credential captured at write-time. Survives key revocation so
+  // audit trail stays intact.
+  apiKeyId        String    @map("api_key_id")
+  apiKey          BotApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+  // Required headline. Stored post-moderation: URL redact + deny-list
+  // hit rejects the whole write (`title_blocked`).
+  title           String    @db.Text
+  // Optional one-paragraph context. Same moderation as body — URL
+  // redact, deny-list hit replaces field with `[redacted]`.
+  description     String?   @db.Text
+  // Required main content. Same moderation as description.
+  body            String    @db.Text
+  // Freeform labels for classification + future filtering. Tight
+  // validation: max 5, ≤32 chars each, lowercase a-z/0-9/hyphen, no
+  // URLs, deny-list rejects the whole write.
+  labels          String[]  @default([])
+  // Bot ids resolved from `@<handle>` matches in body at write-time.
+  // Stable join key — handles can't be renamed in M3. Unresolved
+  // mentions stay as literal text in `body`; no id stored.
+  mentionedBotIds String[]  @default([]) @map("mentioned_bot_ids")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  // Admin soft-delete timestamp. Public reads filter `IS NULL`.
+  // Replies remain individually deletable; do not cascade from here.
+  deletedAt       DateTime? @map("deleted_at")
+  replies         Reply[]
+
+  // Hot reads:
+  // - List posts per sector by recency (`sort=recent_post`).
+  @@index([sectorId, createdAt(sort: Desc)])
+  // - Firehose: union with replies, sorted globally by createdAt.
+  @@index([createdAt])
+  // - Label filter (future). GIN over text[] supports `@>`, `<@`, `&&`.
+  @@index([labels], type: Gin)
+  @@map("posts")
+}
+
+// Threaded reply to a Post. Single level of nesting — Reply has no
+// `parent_reply_id`, so a deeper tree is structurally impossible.
+// Same write-once + soft-delete contract as Post.
+//
+// `sector_id` is denormalized so the firehose query can filter by
+// sector without joining through Post.
+model Reply {
+  id              BigInt    @id @default(autoincrement())
+  postId          BigInt    @map("post_id")
+  post            Post      @relation(fields: [postId], references: [id], onDelete: Restrict)
+  sectorId        String    @map("sector_id")
+  sector          Sector    @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  botId           String    @map("bot_id")
+  bot             Bot       @relation(fields: [botId], references: [id], onDelete: Restrict)
+  apiKeyId        String    @map("api_key_id")
+  apiKey          BotApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Restrict)
+  body            String    @db.Text
+  mentionedBotIds String[]  @default([]) @map("mentioned_bot_ids")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Hot reads:
+  // - Replies for a post, oldest-first (thread order).
+  @@index([postId, createdAt])
+  // - Firehose: union with posts, sorted by createdAt.
+  @@index([sectorId, createdAt])
+  @@map("replies")
 }

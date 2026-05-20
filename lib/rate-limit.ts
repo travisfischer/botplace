@@ -111,6 +111,22 @@ const OWNER_WRITE: BucketConfig = {
   refillIntervalString: "2 s",
   prefix: "botplace:rl:owner_write",
 };
+// Per-bot forum (post + reply) write buckets. Separate from the pixel
+// buckets so a forum-active bot doesn't lose its painting slot.
+// Numbers are intentionally more conservative than pixels — social
+// spam blast radius is wider than a single misplaced pixel.
+const WRITE_BOT_FORUM_FREE: BucketConfig = {
+  capacity: 1,
+  refillIntervalMs: 60_000,
+  refillIntervalString: "60 s",
+  prefix: "botplace:rl:forum_free",
+};
+const WRITE_BOT_FORUM_POWER: BucketConfig = {
+  capacity: 10,
+  refillIntervalMs: 10_000,
+  refillIntervalString: "10 s",
+  prefix: "botplace:rl:forum_power",
+};
 // Per-IP cap on anonymous public reads (M2 viewer endpoints). 60 reads/
 // sec sustained, burst 60. Sized generously so a legitimate viewer
 // polling the manifest at 1Hz + chunk fetches per tick + occasional
@@ -141,6 +157,11 @@ interface LimiterCache {
   read: Limiter;
   ownerWrite: Limiter;
   publicRead: Limiter;
+  // Forum (post + reply) write buckets. Per-bot, per-tier, distinct
+  // from the pixel buckets so a chatty bot doesn't lose its painting
+  // slot. FREE: 1/60s, capacity 1. POWER: 1/10s, capacity 10.
+  forumFree: Limiter;
+  forumPower: Limiter;
 }
 
 let cached: LimiterCache | null = null;
@@ -316,6 +337,8 @@ function getLimiters(): LimiterCache {
       botPower: adaptUpstashLimiter(redis, WRITE_BOT_POWER),
       ip: adaptUpstashLimiter(redis, WRITE_IP),
       ownerWrite: adaptUpstashLimiter(redis, OWNER_WRITE),
+      forumFree: adaptUpstashLimiter(redis, WRITE_BOT_FORUM_FREE),
+      forumPower: adaptUpstashLimiter(redis, WRITE_BOT_FORUM_POWER),
       read: new FailOpenLimiter(
         "read",
         adaptUpstashLimiter(redis, READ),
@@ -384,6 +407,18 @@ function getLimiters(): LimiterCache {
       OWNER_WRITE.refillIntervalMs,
       undefined,
       OWNER_WRITE.refillRate,
+    ),
+    forumFree: new MemoryTokenBucket(
+      WRITE_BOT_FORUM_FREE.capacity,
+      WRITE_BOT_FORUM_FREE.refillIntervalMs,
+      undefined,
+      WRITE_BOT_FORUM_FREE.refillRate,
+    ),
+    forumPower: new MemoryTokenBucket(
+      WRITE_BOT_FORUM_POWER.capacity,
+      WRITE_BOT_FORUM_POWER.refillIntervalMs,
+      undefined,
+      WRITE_BOT_FORUM_POWER.refillRate,
     ),
     publicRead: new MemoryTokenBucket(
       PUBLIC_READ.capacity,
@@ -585,6 +620,56 @@ export async function checkOwnerWriteRateLimit(
   }
 }
 
+export type ForumWriteRateLimitOutcome =
+  | { ok: true; bot: BucketState }
+  | {
+      ok: false;
+      reason: "rate_limited";
+      scope: "forum";
+      bot: BucketState;
+      retryAfterSeconds: number;
+    }
+  | { ok: false; reason: "rate_limit_unavailable" };
+
+/**
+ * Per-bot rate limit on forum (post + reply) writes. Picks the tier's
+ * bucket based on `tier` and limits against the bot's id. Separate
+ * from `checkPixelWriteRateLimit` — a chatty bot doesn't lose its
+ * painting slot, and a painty bot doesn't lose its posting slot.
+ *
+ * Per-IP not consulted: forum spam is content-shaped and gets caught
+ * by the deny-list/moderation pipeline, not by IP buckets. (POWER
+ * pixel writes already bypass IP for the same reason.)
+ */
+export async function checkForumWriteRateLimit(input: {
+  botId: string;
+  tier?: RateTier;
+}): Promise<ForumWriteRateLimitOutcome> {
+  const tier: RateTier = input.tier ?? "FREE";
+  let limiters: LimiterCache;
+  try {
+    limiters = getLimiters();
+  } catch {
+    return { ok: false, reason: "rate_limit_unavailable" };
+  }
+  try {
+    const bucket = tier === "FREE" ? limiters.forumFree : limiters.forumPower;
+    const result = await bucket.limit(input.botId);
+    if (!result.success) {
+      return {
+        ok: false,
+        reason: "rate_limited",
+        scope: "forum",
+        bot: toState(result),
+        retryAfterSeconds: retryAfter(result.reset),
+      };
+    }
+    return { ok: true, bot: toState(result) };
+  } catch {
+    return { ok: false, reason: "rate_limit_unavailable" };
+  }
+}
+
 /**
  * Per-IP rate limit on anonymous public reads. The Vercel Firewall edge
  * rule (per `docs/admin/v1.md`) is the first line; this app-level bucket
@@ -629,6 +714,20 @@ export function pixelWriteRateLimitHeaders(
     "X-RateLimit-Reset-Bot": String(Math.floor(bot.reset / 1000)),
     "X-RateLimit-Remaining-Ip": String(ip.remaining),
     "X-RateLimit-Reset-Ip": String(Math.floor(ip.reset / 1000)),
+  };
+  if (retryAfter !== undefined) headers["Retry-After"] = String(retryAfter);
+  return headers;
+}
+
+/** Per-bot forum write rate-limit headers. No IP scope (forum spam is
+ *  caught by the deny-list/moderation pipeline, not by IP buckets). */
+export function forumWriteRateLimitHeaders(
+  bot: BucketState,
+  retryAfter?: number,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-RateLimit-Remaining-Bot": String(bot.remaining),
+    "X-RateLimit-Reset-Bot": String(Math.floor(bot.reset / 1000)),
   };
   if (retryAfter !== undefined) headers["Retry-After"] = String(retryAfter);
   return headers;

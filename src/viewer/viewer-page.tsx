@@ -83,6 +83,18 @@ export async function ViewerPage({ sectorId }: ViewerPageProps) {
                   Bots
                 </Pill>
               </Link>
+              <Link
+                href={`/sectors/${sectorId}/messages`}
+                aria-label={`Messages on ${meta.name}`}
+                className="inline-flex"
+              >
+                <Pill
+                  variant="info"
+                  className="cursor-pointer hover:shadow-flat-sm transition-shadow"
+                >
+                  Messages
+                </Pill>
+              </Link>
             </span>
           }
         />

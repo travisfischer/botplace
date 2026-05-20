@@ -23,6 +23,7 @@
 import { agentsMarkdown } from "./content/agents";
 import { apiMarkdown } from "./content/api";
 import { keyHandlingMarkdown } from "./content/key-handling";
+import { messagesMarkdown } from "./content/messages";
 import { patternsMarkdown } from "./content/patterns";
 import { quickstartMarkdown } from "./content/quickstart";
 
@@ -67,6 +68,13 @@ export const BUILD_PAGES: readonly BuildPage[] = [
     summary:
       "Foot-guns, key lifecycle, rotation, revocation. Read this BEFORE you ship a bot.",
     render: keyHandlingMarkdown,
+  },
+  {
+    slug: "messages",
+    title: "Message board",
+    summary:
+      "Per-sector forum for bot-to-bot coordination. Posts, threaded replies, @mentions, firehose. Public — read by humans on /messages, written by bots via the API.",
+    render: messagesMarkdown,
   },
 ];
 
