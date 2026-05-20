@@ -14,13 +14,21 @@
 //
 // 404 on unknown handle. Matches the bot-detail API endpoint's shape
 // at /api/v1/public/bots/<handle_or_id>.
+//
+// Per requirement-20260520-0914 F11: PageShell narrow + viewer TopNav
+// + Card-wrapped profile header + token-driven activity feed.
 
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
+import { auth } from "@/auth";
 import { formatRelative } from "@/lib/format-relative";
 import { checkPublicReadRateLimit } from "@/lib/rate-limit";
+import { PageShell } from "@/src/components/page-shell";
+import { TopNav } from "@/src/components/top-nav";
+import { Card } from "@/src/components/ui/card";
+import { Pill } from "@/src/components/ui/pill";
 import {
   botPublicDetailToJson,
   descriptionsDisabled,
@@ -44,6 +52,8 @@ interface RouteProps {
 export default async function BotProfilePage({ params }: RouteProps) {
   const { handle } = await params;
 
+  const session = await auth();
+
   // App-level per-IP floor on the page itself, mirroring the public
   // events API. Vercel Firewall is the first line at the edge; this
   // catches anything that bypasses it. App Router pages can't return a
@@ -58,12 +68,21 @@ export default async function BotProfilePage({ params }: RouteProps) {
   const rl = await checkPublicReadRateLimit(ip);
   if (!rl.ok && rl.reason === "rate_limited") {
     return (
-      <main style={{ maxWidth: 720, margin: "0 auto", padding: "1.5rem 1rem" }}>
-        <h1>Slow down</h1>
-        <p style={{ color: "#555" }}>
-          Too many requests from this IP. Please retry in a few seconds.
-        </p>
-      </main>
+      <PageShell
+        variant="narrow"
+        topNav={
+          <TopNav variant="viewer" signedIn={Boolean(session?.user)} />
+        }
+      >
+        <Card className="text-center">
+          <h1 className="font-display font-extrabold uppercase tracking-tight text-2xl mb-2">
+            Slow down
+          </h1>
+          <p className="text-text-muted">
+            Too many requests from this IP. Please retry in a few seconds.
+          </p>
+        </Card>
+      </PageShell>
     );
   }
 
@@ -101,7 +120,9 @@ export default async function BotProfilePage({ params }: RouteProps) {
   // baseline so the swatch renderer always has something to draw. The
   // client component reuses this map and fetches missing versions
   // lazily (none expected today since palette_version is always 1).
-  const paletteVersionsInBatch = new Set(feedEvents.map((e) => e.palette_version));
+  const paletteVersionsInBatch = new Set(
+    feedEvents.map((e) => e.palette_version),
+  );
   paletteVersionsInBatch.add(1);
   const palettes: Record<number, readonly string[]> = {};
   for (const v of paletteVersionsInBatch) {
@@ -110,66 +131,67 @@ export default async function BotProfilePage({ params }: RouteProps) {
   }
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "1.5rem 1rem" }}>
-      <p style={{ fontSize: 12, color: "#888", marginTop: 0 }}>
-        <Link href="/">← Home</Link>
-        {feedEvents[0] ? (
-          <>
-            {" "}
-            ·{" "}
-            <Link href={`/sectors/${feedEvents[0].sector_id}`}>
-              View canvas
-            </Link>
-            {" "}
-            ·{" "}
-            <Link href={`/bots/${detailJson.handle}/canvas`}>
-              See their pixels
-            </Link>
-          </>
-        ) : null}
-      </p>
-
-      <header style={{ borderBottom: "1px solid #ddd", paddingBottom: "1rem" }}>
-        <h1 style={{ marginBottom: 4 }}>{detailJson.display_name}</h1>
-        <p style={{ fontSize: 14, color: "#555", margin: 0 }}>
-          <code style={{ fontSize: 13 }}>@{detailJson.handle}</code>
-          {" · "}
-          <span title="Rate-limit tier">{detailJson.rate_tier}</span>
-          {" · "}
-          <span title={detailJson.created_at}>
+    <PageShell
+      variant="narrow"
+      topNav={<TopNav variant="viewer" signedIn={Boolean(session?.user)} />}
+    >
+      <Card className="mb-6">
+        <h1 className="font-display font-extrabold uppercase tracking-tight text-3xl leading-tight mb-2">
+          {detailJson.display_name}
+        </h1>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Pill>
+            <code className="font-mono">@{detailJson.handle}</code>
+          </Pill>
+          <Pill variant="info" title="Rate-limit tier">
+            {detailJson.rate_tier}
+          </Pill>
+          <span
+            className="text-xs text-text-muted"
+            title={detailJson.created_at}
+          >
             joined {formatRelative(detailJson.created_at)}
           </span>
           {detailJson.last_seen_at ? (
-            <>
-              {" · "}
-              <span title={detailJson.last_seen_at}>
-                last seen {formatRelative(detailJson.last_seen_at)}
-              </span>
-            </>
+            <span
+              className="text-xs text-text-muted"
+              title={detailJson.last_seen_at}
+            >
+              · last seen {formatRelative(detailJson.last_seen_at)}
+            </span>
           ) : null}
-        </p>
+        </div>
 
         {!suppressDescription && detailJson.description ? (
-          <p
-            style={{
-              marginTop: "0.75rem",
-              fontSize: 15,
-              lineHeight: 1.45,
-              color: "#222",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <p className="text-base text-text leading-snug whitespace-pre-wrap">
             {detailJson.description}
           </p>
         ) : (
-          <p style={{ marginTop: "0.75rem", fontSize: 13, color: "#999" }}>
-            No description.
-          </p>
+          <p className="text-sm text-text-muted">No description.</p>
         )}
-      </header>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h2 style={{ fontSize: 18, marginBottom: "0.75rem" }}>Activity</h2>
+        {feedEvents[0] ? (
+          <div className="flex flex-wrap gap-3 mt-5 text-sm">
+            <Link
+              href={`/sectors/${feedEvents[0].sector_id}`}
+              className="text-brand font-bold hover:underline"
+            >
+              View canvas →
+            </Link>
+            <Link
+              href={`/bots/${detailJson.handle}/canvas`}
+              className="text-brand font-bold hover:underline"
+            >
+              See their pixels →
+            </Link>
+          </div>
+        ) : null}
+      </Card>
+
+      <section>
+        <h2 className="font-display font-extrabold uppercase tracking-tight text-xl mb-4">
+          Activity
+        </h2>
         <ActivityFeed
           handle={detailJson.handle}
           initialEvents={feedEvents}
@@ -177,7 +199,6 @@ export default async function BotProfilePage({ params }: RouteProps) {
           initialBatchSize={INITIAL_PAGE_SIZE}
         />
       </section>
-    </main>
+    </PageShell>
   );
 }
-

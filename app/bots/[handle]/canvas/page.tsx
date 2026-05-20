@@ -3,10 +3,10 @@
 // visible — everything else falls through to the sector's default
 // color via the absent-chunk convention in the BPSS snapshot binary.
 //
-// Server-rendered shell (header + back link); the interactive canvas
-// is a client component (`SectorViewer`) configured in static mode
-// (no polling, no heartbeat, click-to-inspect disabled). The viewer
-// fetches `/api/v1/public/sectors/sector-1/bots/<handle>/snapshot`
+// Server-rendered shell (PageShell bleed + viewer TopNav); the
+// interactive canvas is a client component (`SectorViewer`) configured
+// in static mode (no polling, no heartbeat, click-to-inspect disabled).
+// The viewer fetches `/api/v1/public/sectors/sector-1/bots/<handle>/snapshot`
 // once on mount.
 //
 // Sector is hardcoded to `sector-1` for now — the only sector that
@@ -15,16 +15,22 @@
 // API shape already carry the sector id.
 //
 // 404 on unknown handle. Matches the profile page's shape.
+//
+// Per requirement-20260520-0914 F7: shared TopNav + an accent pill
+// in the context slot signaling "filtered canvas," so visitors can tell
+// at a glance they're not looking at the unfiltered sector.
 
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
+import { auth } from "@/auth";
 import { checkPublicReadRateLimit } from "@/lib/rate-limit";
-import {
-  botPublicDetailToJson,
-  getBotPublicDetail,
-} from "@/src/bots";
+import { PageShell } from "@/src/components/page-shell";
+import { TopNav } from "@/src/components/top-nav";
+import { Card } from "@/src/components/ui/card";
+import { Pill } from "@/src/components/ui/pill";
+import { botPublicDetailToJson, getBotPublicDetail } from "@/src/bots";
 import { isValidHandle, validateHandle } from "@/src/bots/handle";
 import { loadSectorMeta } from "@/src/sectors";
 import { SectorViewer, type SectorMeta } from "@/src/viewer/sector-viewer";
@@ -39,6 +45,7 @@ interface RouteProps {
 
 export default async function BotCanvasPage({ params }: RouteProps) {
   const { handle } = await params;
+  const session = await auth();
 
   // Per-IP floor — see app/bots/[handle]/page.tsx for the App-Router
   // rate-limit-hit-renders-soft-view rationale.
@@ -50,12 +57,21 @@ export default async function BotCanvasPage({ params }: RouteProps) {
   const rl = await checkPublicReadRateLimit(ip);
   if (!rl.ok && rl.reason === "rate_limited") {
     return (
-      <main style={{ maxWidth: 720, margin: "0 auto", padding: "1.5rem 1rem" }}>
-        <h1>Slow down</h1>
-        <p style={{ color: "#555" }}>
-          Too many requests from this IP. Please retry in a few seconds.
-        </p>
-      </main>
+      <PageShell
+        variant="narrow"
+        topNav={
+          <TopNav variant="viewer" signedIn={Boolean(session?.user)} />
+        }
+      >
+        <Card className="text-center">
+          <h1 className="font-display font-extrabold uppercase tracking-tight text-2xl mb-2">
+            Slow down
+          </h1>
+          <p className="text-text-muted">
+            Too many requests from this IP. Please retry in a few seconds.
+          </p>
+        </Card>
+      </PageShell>
     );
   }
 
@@ -69,18 +85,41 @@ export default async function BotCanvasPage({ params }: RouteProps) {
     loadSectorMeta(SECTOR_ID, { path: `/bots/${handle}/canvas` }),
   ]);
   if (!detail) notFound();
+
+  const detailJson = botPublicDetailToJson(detail);
+
+  const contextSlot = (
+    <span className="inline-flex items-center gap-2">
+      <Link
+        href={`/bots/${detailJson.handle}`}
+        className="text-sm font-bold text-text-muted hover:text-brand transition-colors"
+      >
+        ← @{detailJson.handle}
+      </Link>
+      <Pill variant="live">filtered canvas</Pill>
+    </span>
+  );
+
   if (!sector.ok) {
     // Sector misconfiguration is operator territory, not a 404.
     return (
-      <main style={shellStyle}>
-        <section style={emptyStyle}>
-          <p>Canvas not available.</p>
-        </section>
-      </main>
+      <PageShell
+        variant="bleed"
+        topNav={
+          <TopNav
+            variant="viewer"
+            signedIn={Boolean(session?.user)}
+            contextSlot={contextSlot}
+          />
+        }
+      >
+        <div className="flex-1 grid place-items-center">
+          <p className="text-text-muted">Canvas not available.</p>
+        </div>
+      </PageShell>
     );
   }
 
-  const detailJson = botPublicDetailToJson(detail);
   const meta: SectorMeta = {
     ...sector.meta,
     palette: [...sector.meta.palette],
@@ -90,64 +129,19 @@ export default async function BotCanvasPage({ params }: RouteProps) {
   )}/snapshot`;
 
   return (
-    <main style={shellStyle}>
-      <header style={headerStyle}>
-        <Link href={`/bots/${detailJson.handle}`} style={linkStyle}>
-          ← @{detailJson.handle}
-        </Link>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 13, opacity: 0.7 }}>
-          {detailJson.display_name}&rsquo;s canvas
-          {" · "}
-          <span style={{ opacity: 0.6 }}>{meta.name}</span>
-        </span>
-      </header>
-      <section style={canvasShellStyle}>
+    <PageShell
+      variant="bleed"
+      topNav={
+        <TopNav
+          variant="viewer"
+          signedIn={Boolean(session?.user)}
+          contextSlot={contextSlot}
+        />
+      }
+    >
+      <div className="flex-1 min-h-0 relative bg-bg">
         <SectorViewer meta={meta} staticSnapshotUrl={snapshotUrl} />
-      </section>
-    </main>
+      </div>
+    </PageShell>
   );
 }
-
-const shellStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  height: "100dvh",
-  width: "100vw",
-  overflow: "hidden",
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  margin: 0,
-};
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "10px 16px",
-  borderBottom: "1px solid #2a2a2a",
-  background: "#0a0a0a",
-  color: "#dcf5ff",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "#dcf5ff",
-  textDecoration: "none",
-  fontSize: 13,
-  padding: "4px 10px",
-  borderRadius: 4,
-  border: "1px solid #2a2a2a",
-};
-
-const canvasShellStyle: React.CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  position: "relative",
-  background: "#000",
-};
-
-const emptyStyle: React.CSSProperties = {
-  flex: 1,
-  display: "grid",
-  placeItems: "center",
-  color: "#dcf5ff",
-};

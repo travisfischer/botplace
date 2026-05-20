@@ -7,10 +7,16 @@
 //
 // CDN cache for /api/v1/public/sectors/:id is unaffected — Vercel caches
 // the route handler's response, not this helper.
-
-import Link from "next/link";
+//
+// Per requirement-20260520-0914 F6: PageShell bleed + theme-aware viewer
+// TopNav (sector-name Pill in the context slot) + theme-aware backdrop
+// in the area around the canvas frame. The canvas content itself is
+// unchanged.
 
 import { auth } from "@/auth";
+import { PageShell } from "@/src/components/page-shell";
+import { TopNav } from "@/src/components/top-nav";
+import { Pill } from "@/src/components/ui/pill";
 import { loadSectorMeta } from "@/src/sectors";
 
 import { SectorViewer, type SectorMeta } from "./sector-viewer";
@@ -40,86 +46,33 @@ export async function ViewerPage({ sectorId }: ViewerPageProps) {
 
   if (!meta) {
     return (
-      <main style={shellStyle}>
-        <header style={headerStyle}>
-          <strong>Botplace</strong>
-        </header>
-        <section style={emptyStyle}>
-          <p>Sector not available.</p>
-        </section>
-      </main>
+      <PageShell
+        variant="bleed"
+        topNav={
+          <TopNav variant="viewer" signedIn={Boolean(session?.user)} />
+        }
+      >
+        <div className="flex-1 grid place-items-center bg-bg">
+          <p className="text-text-muted">Sector not available.</p>
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <main style={shellStyle}>
-      <header style={headerStyle}>
-        <strong style={{ fontSize: 18 }}>Botplace</strong>
-        <span style={{ opacity: 0.6, fontSize: 13 }}>{meta.name}</span>
-        <span style={{ flex: 1 }} />
-        <Link href="/build" style={linkStyle}>
-          Build
-        </Link>
-        {session?.user ? (
-          <Link href="/account" style={linkStyle}>
-            Account
-          </Link>
-        ) : (
-          <Link href="/signup" style={linkStyle}>
-            Build a bot
-          </Link>
-        )}
-      </header>
-      <section style={canvasShellStyle}>
+    <PageShell
+      variant="bleed"
+      topNav={
+        <TopNav
+          variant="viewer"
+          signedIn={Boolean(session?.user)}
+          contextSlot={<Pill>{meta.name}</Pill>}
+        />
+      }
+    >
+      <div className="flex-1 min-h-0 relative bg-bg">
         <SectorViewer meta={meta} />
-      </section>
-    </main>
+      </div>
+    </PageShell>
   );
 }
-
-const shellStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  height: "100dvh",
-  width: "100vw",
-  overflow: "hidden",
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  margin: 0,
-};
-
-const headerStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "10px 16px",
-  borderBottom: "1px solid #2a2a2a",
-  background: "#0a0a0a",
-  color: "#dcf5ff",
-};
-
-const linkStyle: React.CSSProperties = {
-  color: "#dcf5ff",
-  textDecoration: "none",
-  fontSize: 13,
-  padding: "4px 10px",
-  borderRadius: 4,
-  border: "1px solid #2a2a2a",
-};
-
-const canvasShellStyle: React.CSSProperties = {
-  flex: 1,
-  // `min-height: 0` lets the flex item shrink below its content's natural
-  // size. Without it, the 1000×1000 canvas's intrinsic layout dimensions
-  // would push this section past its flex-1 allocation and the bottom of
-  // the canvas would fall below the viewport fold.
-  minHeight: 0,
-  position: "relative",
-  background: "#000",
-};
-
-const emptyStyle: React.CSSProperties = {
-  flex: 1,
-  display: "grid",
-  placeItems: "center",
-  color: "#dcf5ff",
-};

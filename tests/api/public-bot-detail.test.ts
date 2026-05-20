@@ -1,11 +1,11 @@
-// GET /api/v1/public/bots/:handle_or_id — public bot-detail endpoint.
+// GET /api/v1/public/bots/:handle — public bot-detail endpoint.
 //
 // Dual-lookup: handle OR cuid id. Skip when DATABASE_URL is unset.
 
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { GET as getBotDetail } from "@/app/api/v1/public/bots/[handle_or_id]/route";
+import { GET as getBotDetail } from "@/app/api/v1/public/bots/[handle]/route";
 import { prisma } from "@/lib/prisma";
 import { writePixel } from "@/src/pixels";
 
@@ -79,7 +79,7 @@ function detailRequest(): Request {
   return new Request("http://test/");
 }
 
-describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
+describeIfDb("GET /api/v1/public/bots/:handle", () => {
   it(
     "resolves by handle",
     { timeout: 30_000 },
@@ -87,7 +87,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
       const s = await seed({ description: "I draw gliders." });
       try {
         const res = await getBotDetail(detailRequest(), {
-          params: Promise.resolve({ handle_or_id: s.botHandle }),
+          params: Promise.resolve({ handle: s.botHandle }),
         });
         expect(res.status).toBe(200);
         const body = await res.json();
@@ -116,7 +116,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
       const s = await seed();
       try {
         const res = await getBotDetail(detailRequest(), {
-          params: Promise.resolve({ handle_or_id: s.botId }),
+          params: Promise.resolve({ handle: s.botId }),
         });
         expect(res.status).toBe(200);
         const body = await res.json();
@@ -148,7 +148,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
           apiKeyId: s.apiKeyId,
         });
         const res = await getBotDetail(detailRequest(), {
-          params: Promise.resolve({ handle_or_id: s.botHandle }),
+          params: Promise.resolve({ handle: s.botHandle }),
         });
         const body = await res.json();
         expect(body.last_seen_at).toMatch(/^20\d\d-/);
@@ -160,7 +160,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
 
   it("404s on unknown handle", async () => {
     const res = await getBotDetail(detailRequest(), {
-      params: Promise.resolve({ handle_or_id: "doesnotexist-abc" }),
+      params: Promise.resolve({ handle: "doesnotexist-abc" }),
     });
     expect(res.status).toBe(404);
     const body = await res.json();
@@ -169,7 +169,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
 
   it("404s on unknown cuid", async () => {
     const res = await getBotDetail(detailRequest(), {
-      params: Promise.resolve({ handle_or_id: "c" + "x".repeat(24) }),
+      params: Promise.resolve({ handle: "c" + "x".repeat(24) }),
     });
     expect(res.status).toBe(404);
   });
@@ -177,7 +177,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
   it("400s on syntactically invalid input", async () => {
     // Handle regex requires lowercase + hyphens only; uppercase fails.
     const res = await getBotDetail(detailRequest(), {
-      params: Promise.resolve({ handle_or_id: "NotAValidHandle" }),
+      params: Promise.resolve({ handle: "NotAValidHandle" }),
     });
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -188,7 +188,7 @@ describeIfDb("GET /api/v1/public/bots/:handle_or_id", () => {
     const s = await seed();
     try {
       const res = await getBotDetail(detailRequest(), {
-        params: Promise.resolve({ handle_or_id: s.botHandle }),
+        params: Promise.resolve({ handle: s.botHandle }),
       });
       expect(res.headers.get("Cache-Control")).toMatch(/s-maxage=/);
       expect(res.headers.get("CDN-Cache-Control")).toMatch(/s-maxage=/);

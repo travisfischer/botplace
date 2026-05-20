@@ -13,6 +13,12 @@ import {
   HANDLE_MIN_LENGTH,
   HANDLE_REGEX,
 } from "@/src/bots/handle-format";
+import { Button } from "@/src/components/ui/button";
+import { Card } from "@/src/components/ui/card";
+import { FormRow } from "@/src/components/ui/form-row";
+import { Input } from "@/src/components/ui/input";
+import { Label } from "@/src/components/ui/label";
+
 import { createBotAction, type CreateBotState } from "./_actions";
 
 const INITIAL: CreateBotState | null = null;
@@ -70,7 +76,12 @@ export function CreateBotForm() {
         if (ac.signal.aborted) return;
         const body = (await res.json()) as
           | { available: true; handle: string }
-          | { available: false; handle: string; reason: string; message: string }
+          | {
+              available: false;
+              handle: string;
+              reason: string;
+              message: string;
+            }
           | { error: string; message: string };
         if (ac.signal.aborted) return;
         if ("available" in body) {
@@ -113,23 +124,26 @@ export function CreateBotForm() {
   const handleHint = renderHandleHint(check, handle);
 
   return (
-    <section>
-      <h3>Create a bot</h3>
-      <p style={{ fontSize: 13, color: "#666" }}>
-        <strong>Handle</strong> is your bot&rsquo;s globally-unique slug — it
-        appears in attribution UIs and the public API. Lowercase letters,
-        digits, and hyphens; {HANDLE_MIN_LENGTH}&ndash;{HANDLE_MAX_LENGTH}{" "}
-        characters; must start with a letter. Persistent (no rename in
-        M3).
+    <Card>
+      <h3 className="font-display font-extrabold uppercase tracking-tight text-xl mb-2">
+        Add a bot
+      </h3>
+      <p className="text-sm text-text-muted mb-2 max-w-[60ch]">
+        <strong className="font-bold text-text">Handle</strong> is your
+        bot&rsquo;s globally-unique slug — it appears in attribution UIs
+        and the public API. Lowercase letters, digits, and hyphens;{" "}
+        {HANDLE_MIN_LENGTH}&ndash;{HANDLE_MAX_LENGTH} characters; must
+        start with a letter. Persistent (no rename in M3).
       </p>
-      <p style={{ fontSize: 13, color: "#666" }}>
-        <strong>Display name</strong> is a freely-editable label for your
-        own &ldquo;my bots&rdquo; listing.
+      <p className="text-sm text-text-muted mb-5 max-w-[60ch]">
+        <strong className="font-bold text-text">Display name</strong> is a
+        freely-editable label for your own &ldquo;my bots&rdquo; listing.
       </p>
       <form action={formAction}>
-        <label style={{ display: "block", marginBottom: 8 }}>
-          Handle
-          <input
+        <FormRow>
+          <Label htmlFor="create-bot-handle">Handle</Label>
+          <Input
+            id="create-bot-handle"
             name="handle"
             required
             minLength={HANDLE_MIN_LENGTH}
@@ -143,23 +157,22 @@ export function CreateBotForm() {
             value={handle}
             onChange={(e) => setHandle(e.target.value)}
             aria-describedby="handle-hint"
-            style={{ display: "block", width: "100%", marginTop: 4 }}
           />
           {handleHint}
-        </label>
-        <label style={{ display: "block", marginBottom: 8 }}>
-          Display name
-          <input
+        </FormRow>
+        <FormRow>
+          <Label htmlFor="create-bot-display-name">Display name</Label>
+          <Input
+            id="create-bot-display-name"
             name="display_name"
             required
             minLength={1}
             maxLength={MAX_NAME_LENGTH}
             placeholder="My bot"
             disabled={pending}
-            style={{ display: "block", width: "100%", marginTop: 4 }}
           />
-        </label>
-        <button
+        </FormRow>
+        <Button
           type="submit"
           disabled={
             pending ||
@@ -167,56 +180,80 @@ export function CreateBotForm() {
           }
         >
           {pending ? "Creating…" : "Create bot"}
-        </button>
+        </Button>
       </form>
       {state?.ok && state.plaintext ? (
-        <div role="status">
-          <p>
-            <strong>
-              Bot &ldquo;{state.handle}&rdquo; ({state.displayName}) created.
-            </strong>{" "}
-            Save this key now — it will not be shown again.
-          </p>
-          <p>
-            <code>{state.plaintext}</code>
-          </p>
-          <p>(prefix in logs: {state.prefix})</p>
-        </div>
+        <SecretReveal
+          title={`Bot "${state.handle}" (${state.displayName}) created`}
+          secret={state.plaintext}
+          prefix={state.prefix ?? ""}
+        />
       ) : null}
       {state && !state.ok && state.message ? (
-        <p role="alert">Error: {state.message}</p>
+        <p
+          role="alert"
+          className="mt-4 text-sm text-accent font-bold"
+        >
+          Error: {state.message}
+        </p>
       ) : null}
-    </section>
+    </Card>
   );
 }
 
 function renderHandleHint(check: HandleCheck, handle: string) {
-  const base = {
-    id: "handle-hint",
-    style: { fontSize: 12, marginTop: 4, minHeight: 16 } as const,
-  };
+  const baseClass = "text-xs mt-1.5 min-h-4 font-bold";
   if (check.state === "checking") {
-    return (
-      <div {...base} style={{ ...base.style, color: "#888" }}>
-        Checking…
-      </div>
-    );
+    return <div className={`${baseClass} text-text-muted`}>Checking…</div>;
   }
   if (check.state === "available" && check.handle === handle) {
     return (
-      <div {...base} style={{ ...base.style, color: "#177a3a" }} role="status">
-        ✓ <code>{check.handle}</code> is available
+      <div className={`${baseClass} text-palm`} role="status">
+        ✓ <code className="font-mono">{check.handle}</code> is available
       </div>
     );
   }
   if (check.state === "unavailable" && check.handle === handle) {
     return (
-      <div {...base} style={{ ...base.style, color: "#a4262c" }} role="status">
+      <div className={`${baseClass} text-accent`} role="status">
         ✗ {check.message}
       </div>
     );
   }
   // Idle (empty, sub-min-length, or stale check after edit) — keep the
   // slot reserved so the form doesn't reflow when the hint appears.
-  return <div {...base} aria-hidden />;
+  return <div className={baseClass} aria-hidden />;
+}
+
+/**
+ * "Shown once — save it now" reveal block. Per requirement-20260520-0914
+ * Resolved decision 3: inline reveal, not a Dialog. Sun warning ground
+ * makes "you only see this once" unmissable.
+ */
+function SecretReveal({
+  title,
+  secret,
+  prefix,
+}: {
+  title: string;
+  secret: string;
+  prefix: string;
+}) {
+  return (
+    <div
+      role="status"
+      className="mt-6 bg-sun text-sun-foreground border-[1.5px] border-border shadow-flat-sm p-4"
+    >
+      <p className="font-bold mb-1">{title}</p>
+      <p className="text-sm mb-3">
+        Save this key now — it will not be shown again.
+      </p>
+      <code className="block font-mono text-sm bg-surface text-text border-[1.5px] border-border px-3 py-2 break-all">
+        {secret}
+      </code>
+      <p className="text-xs mt-2">
+        (prefix in logs: <code className="font-mono">{prefix}</code>)
+      </p>
+    </div>
+  );
 }

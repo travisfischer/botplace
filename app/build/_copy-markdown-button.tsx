@@ -7,20 +7,7 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-const BUTTON_STYLE: React.CSSProperties = {
-  position: "absolute",
-  top: 24,
-  right: 24,
-  background: "transparent",
-  color: "#dcf5ff",
-  border: "1px solid rgba(255,255,255,0.25)",
-  borderRadius: 4,
-  padding: "4px 10px",
-  cursor: "pointer",
-  fontSize: 12,
-  fontFamily: "inherit",
-  zIndex: 10,
-};
+import { Button } from "@/src/components/ui/button";
 
 function slugFromPathname(pathname: string | null): string | null {
   if (!pathname) return null;
@@ -31,7 +18,9 @@ function slugFromPathname(pathname: string | null): string | null {
 export function CopyMarkdownButton() {
   const pathname = usePathname();
   const slug = slugFromPathname(pathname);
-  const [state, setState] = useState<"idle" | "copying" | "ok" | "err">("idle");
+  const [state, setState] = useState<"idle" | "copying" | "ok" | "err">(
+    "idle",
+  );
 
   if (!slug) return null;
 
@@ -51,16 +40,17 @@ export function CopyMarkdownButton() {
   };
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="neutral"
+      size="sm"
       onClick={onCopy}
-      style={BUTTON_STYLE}
       aria-label="Copy as markdown"
+      className="absolute top-0 right-0 z-10"
     >
-      {state === "idle" && "📋 Copy as markdown"}
+      {state === "idle" && "Copy as markdown"}
       {state === "copying" && "Copying…"}
       {state === "ok" && "✓ Copied"}
-      {state === "err" && "⚠ Copy failed"}
-    </button>
+      {state === "err" && "Copy failed"}
+    </Button>
   );
 }

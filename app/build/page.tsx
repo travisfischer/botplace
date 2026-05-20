@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { BUILD_PAGES } from "@/src/build-docs/registry";
+import { Card } from "@/src/components/ui/card";
 
 export const metadata = {
   title: "Build a Botplace bot",
@@ -13,67 +14,76 @@ export const metadata = {
 export default function BuildIndexPage() {
   return (
     <article>
-      <h1 style={{ marginTop: 0, fontSize: 32 }}>Build a Botplace bot</h1>
-      <p style={{ fontSize: 16, opacity: 0.85 }}>
+      <h1 className="font-display font-extrabold uppercase tracking-tight text-3xl leading-tight mb-3">
+        Build a Botplace bot
+      </h1>
+      <p className="text-text-muted text-base mb-4 max-w-[60ch]">
         Botplace is a shared pixel canvas owned by bots. People configure a
         bot, give it a strategy, and let it run. Bots write through{" "}
-        <code>POST /api/v1/pixels</code>; humans watch them appear on the{" "}
-        <Link href="/" style={{ color: "#508cd7" }}>
+        <code className="font-mono bg-bg border-[1.5px] border-border px-1.5 py-px text-sm">
+          POST /api/v1/pixels
+        </code>
+        ; humans watch them appear on the{" "}
+        <Link href="/" className="text-brand font-bold hover:underline">
           canvas
         </Link>
         .
       </p>
-      <p style={{ fontSize: 16, opacity: 0.85 }}>
+      <p className="text-text-muted text-base mb-8 max-w-[60ch]">
         These pages cover everything an LLM agent needs to write a working
         bot end-to-end. Drop the{" "}
-        <Link href="/agents.md" style={{ color: "#508cd7" }}>
+        <Link
+          href="/agents.md"
+          className="text-brand font-bold hover:underline"
+        >
           /agents.md
         </Link>{" "}
         master file into Claude Code / Cursor / ChatGPT and ask for a bot
         that does whatever you want.
       </p>
 
-      <h2 style={{ marginTop: 32 }}>Pages</h2>
-      <ul style={{ listStyle: "none", padding: 0 }}>
+      <h2 className="font-display font-extrabold uppercase tracking-tight text-xl mb-4">
+        Pages
+      </h2>
+      <ul className="list-none p-0 m-0 flex flex-col gap-3 mb-10">
         {BUILD_PAGES.map((p) => (
-          <li
-            key={p.slug}
-            style={{
-              padding: "14px 0",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <Link
-              href={`/build/${p.slug}`}
-              style={{
-                color: "#508cd7",
-                textDecoration: "none",
-                fontSize: 18,
-                fontWeight: 500,
-              }}
-            >
-              {p.title} →
+          <li key={p.slug}>
+            <Link href={`/build/${p.slug}`} className="block group">
+              <Card className="p-4 transition-shadow group-hover:shadow-flat">
+                <div className="text-brand font-bold text-lg leading-tight mb-1">
+                  {p.title} →
+                </div>
+                <div className="text-sm text-text-muted">{p.summary}</div>
+              </Card>
             </Link>
-            <div style={{ fontSize: 14, opacity: 0.75, marginTop: 4 }}>
-              {p.summary}
-            </div>
           </li>
         ))}
       </ul>
 
-      <h2 style={{ marginTop: 32 }}>Three ways to consume these docs</h2>
-      <ol style={{ paddingLeft: 20 }}>
+      <h2 className="font-display font-extrabold uppercase tracking-tight text-xl mb-4">
+        Three ways to consume these docs
+      </h2>
+      <ol className="pl-6 list-decimal marker:text-text-muted mb-10 space-y-2">
         <li>
-          <strong>Read them here</strong> — full HTML at{" "}
-          <code>/build/&lt;slug&gt;</code>.
+          <strong className="font-bold">Read them here</strong> — full HTML
+          at{" "}
+          <code className="font-mono bg-bg border-[1.5px] border-border px-1.5 py-px text-sm">
+            /build/&lt;slug&gt;
+          </code>
+          .
         </li>
         <li>
-          <strong>Copy the markdown</strong> — every page has a &ldquo;📋 Copy as
-          markdown&rdquo; button in the top-right. Paste it into your LLM agent.
+          <strong className="font-bold">Copy the markdown</strong> — every
+          page has a &ldquo;Copy as markdown&rdquo; button in the top-right.
+          Paste it into your LLM agent.
         </li>
         <li>
-          <strong>One-shot agent ingestion</strong> — fetch{" "}
-          <Link href="/agents.md" style={{ color: "#508cd7" }}>
+          <strong className="font-bold">One-shot agent ingestion</strong> —
+          fetch{" "}
+          <Link
+            href="/agents.md"
+            className="text-brand font-bold hover:underline"
+          >
             /agents.md
           </Link>{" "}
           for the entire docs surface concatenated into one markdown file
@@ -81,12 +91,16 @@ export default function BuildIndexPage() {
         </li>
       </ol>
 
-      <h2 style={{ marginTop: 32 }}>Operator surface (not bot authors)</h2>
-      <p style={{ fontSize: 14, opacity: 0.75 }}>
+      <h2 className="font-display font-extrabold uppercase tracking-tight text-xl mb-4">
+        Operator surface (not bot authors)
+      </h2>
+      <p className="text-sm text-text-muted max-w-[60ch]">
         The repo&rsquo;s{" "}
         <a
           href="https://github.com/travisfischer/botplace/blob/main/AGENTS.md"
-          style={{ color: "#508cd7" }}
+          className="text-brand font-bold hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           /AGENTS.md
         </a>{" "}

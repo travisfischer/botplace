@@ -574,21 +574,12 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
       onWheel={onWheel}
       onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
-      style={{
-        width: "100%",
-        height: "100%",
-        overflow: "hidden",
-        position: "relative",
-        // Disable browser default touch behaviors (pan, zoom) so the
-        // canvas owns the gestures end-to-end.
-        touchAction: "none",
-        // Prevent text selection on rapid double-tap-to-zoom.
-        userSelect: "none",
-        // Background = palette[default_color], so chunks-not-yet-loaded
-        // blend with the painted areas (and "empty canvas" looks deliberate).
-        background: meta.palette[meta.default_color] ?? "#000",
-        outline: "none",
-      }}
+      // bg-bg keeps the area around the canvas frame theme-aware
+      // (warm sand in Day, deep indigo in Dusk). The canvas bitmap
+      // itself is pre-filled with palette[default_color] (see
+      // canvas.tsx), so unloaded-chunks-inside-the-world still read
+      // as canvas content, not page chrome.
+      className="w-full h-full overflow-hidden relative outline-none touch-none select-none bg-bg"
       data-min-scale={MIN_SCALE}
       data-max-scale={MAX_SCALE}
     >
@@ -643,7 +634,11 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
           />
         )}
       {!healthy && (
-        <div role="status" aria-live="polite" style={stalePillStyle}>
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none bg-surface text-text border-[1.5px] border-border shadow-flat-sm px-3 py-1 text-xs font-bold uppercase tracking-[0.08em]"
+        >
           Reconnecting…
         </div>
       )}
@@ -671,17 +666,3 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
   );
 }
 
-const stalePillStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 12,
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "6px 14px",
-  borderRadius: 999,
-  background: "rgba(85, 65, 95, 0.92)",
-  color: "#dcf5ff",
-  fontSize: 12,
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  pointerEvents: "none",
-  zIndex: 10,
-};
