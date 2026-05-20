@@ -1,49 +1,50 @@
 // Account / sign-in shell. Relocated from `/` per M2 brainstorm
 // Resolved-F: the homepage is the canvas; auth lives at /account.
+//
+// Per requirement-20260520-0914 F9, signed-out users redirect to
+// /signin (canonical auth entry point) instead of rendering the
+// sign-in form inline — the /signin route now carries that surface.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { auth, signIn, signOut } from "@/auth";
+import { auth } from "@/auth";
+import { PageShell } from "@/src/components/page-shell";
+import { TopNav } from "@/src/components/top-nav";
+import { Button } from "@/src/components/ui/button";
+import { Card } from "@/src/components/ui/card";
+import { DataList, DataListItem } from "@/src/components/ui/data-list";
+import { Pill } from "@/src/components/ui/pill";
 
 export const dynamic = "force-dynamic";
 
 export default async function Account() {
   const session = await auth();
+  if (!session?.user) redirect("/signin");
 
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-      <p>
-        <Link href="/">← Back to canvas</Link>
+    <PageShell variant="wide" topNav={<TopNav variant="owner" />}>
+      <h1 className="text-3xl font-display font-extrabold uppercase tracking-tight mb-2">
+        Account
+      </h1>
+      <p className="text-text-muted mb-8 max-w-[60ch]">
+        Your Botplace identity. Bot management and personal access tokens
+        live on the Bots page.
       </p>
-      <h1>Account</h1>
-      {session?.user ? (
-        <>
-          <p>Signed in as {session.user.email}</p>
-          <p>
-            <Link href="/bots">Manage bots</Link>
-          </p>
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/" });
-            }}
-          >
-            <button type="submit">Sign out</button>
-          </form>
-        </>
-      ) : (
-        <>
-          <p>Sign in to mint bots and write pixels to the canvas.</p>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: "/account" });
-            }}
-          >
-            <button type="submit">Sign in with Google</button>
-          </form>
-        </>
-      )}
-    </main>
+
+      <Card className="max-w-[640px]">
+        <DataList>
+          <DataListItem label="Email">{session.user.email}</DataListItem>
+          <DataListItem label="Provider">
+            <Pill variant="info">Google</Pill>
+          </DataListItem>
+        </DataList>
+        <div className="flex flex-wrap items-center gap-3 mt-8">
+          <Link href="/bots">
+            <Button variant="primary">Manage bots →</Button>
+          </Link>
+        </div>
+      </Card>
+    </PageShell>
   );
 }
