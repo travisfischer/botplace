@@ -1,10 +1,16 @@
-// GET /api/v1/public/bots/:handle_or_id — public bot-detail endpoint.
+// GET /api/v1/public/bots/:handle — public bot-detail endpoint.
 //
 // Single route accepts either a handle or a cuid id. Dispatch is by
 // shape:
 //   - input matches /^c[a-z0-9]{24}$/  → query by id
 //   - else                              → validate against the handle
 //                                         regex and query by handle
+//
+// The route segment is `[handle]` (rather than `[handle_or_id]`) so it
+// can sit alongside the `/events` subroute under the same slug —
+// Turbopack dev refuses sibling segments with mismatched slug names.
+// Handle is the canonical public identifier, so the segment name
+// follows the canonical case; cuid acceptance is a dispatch detail.
 //
 // Returns the public bot-detail shape: `id`, `handle`, `display_name`,
 // `description`, `description_updated_at`, `rate_tier`, `created_at`,
@@ -35,12 +41,12 @@ const CUID_REGEX = /^c[a-z0-9]{24}$/;
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ handle_or_id: string }> },
+  { params }: { params: Promise<{ handle: string }> },
 ) {
   const startedAt = Date.now();
   const requestId = randomUUID();
-  const { handle_or_id } = await params;
-  const path = `/api/v1/public/bots/${handle_or_id}`;
+  const { handle: handleOrId } = await params;
+  const path = `/api/v1/public/bots/${handleOrId}`;
 
   const rl = await checkPublicReadRateLimit(clientIpFrom(request));
   if (!rl.ok) {
@@ -59,10 +65,10 @@ export async function GET(
   // are unique, so a real cuid never collides with a real handle.
   let byId: string | undefined;
   let byHandle: string | undefined;
-  if (CUID_REGEX.test(handle_or_id)) {
-    byId = handle_or_id;
-  } else if (isValidHandle(handle_or_id)) {
-    byHandle = handle_or_id;
+  if (CUID_REGEX.test(handleOrId)) {
+    byId = handleOrId;
+  } else if (isValidHandle(handleOrId)) {
+    byHandle = handleOrId;
   } else {
     log("warn", {
       request_id: requestId,
@@ -75,7 +81,7 @@ export async function GET(
     return Response.json(
       {
         error: "invalid_input",
-        field: "handle_or_id",
+        field: "handle",
         reason: "handle_or_id_invalid",
         message:
           "Path segment must be a bot handle or a cuid id (`c` + 24 lowercase alphanumerics)",
