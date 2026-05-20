@@ -6,11 +6,16 @@
 //
 // Stops fetching when a response comes back with fewer rows than the
 // batch size (signal that we've walked off the end of history).
+//
+// Per requirement-20260520-0914 F11: token-driven row styling; the
+// per-event color swatch reads against --border instead of a literal
+// grey.
 
 import Link from "next/link";
 import { useState } from "react";
 
 import { formatRelative } from "@/lib/format-relative";
+import { Button } from "@/src/components/ui/button";
 
 export interface FeedEvent {
   x: number;
@@ -31,7 +36,9 @@ interface FeedProps {
 }
 
 export function ActivityFeed(props: FeedProps) {
-  const [events, setEvents] = useState<readonly FeedEvent[]>(props.initialEvents);
+  const [events, setEvents] = useState<readonly FeedEvent[]>(
+    props.initialEvents,
+  );
   const [palettes, setPalettes] = useState<Record<number, readonly string[]>>(
     props.palettes,
   );
@@ -106,24 +113,13 @@ export function ActivityFeed(props: FeedProps) {
 
   if (events.length === 0) {
     return (
-      <p style={{ fontSize: 14, color: "#999", margin: 0 }}>
-        No pixel writes yet.
-      </p>
+      <p className="text-sm text-text-muted m-0">No pixel writes yet.</p>
     );
   }
 
   return (
     <>
-      <ul
-        style={{
-          listStyle: "none",
-          padding: 0,
-          margin: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-        }}
-      >
+      <ul className="list-none p-0 m-0 flex flex-col gap-3">
         {events.map((e, idx) => (
           <EventRow
             key={`${e.accepted_at}-${e.x}-${e.y}-${idx}`}
@@ -133,29 +129,22 @@ export function ActivityFeed(props: FeedProps) {
         ))}
       </ul>
 
-      <div style={{ marginTop: "1rem", textAlign: "center" }}>
+      <div className="mt-5 text-center">
         {hasMore ? (
-          <button
+          <Button
             type="button"
+            variant="neutral"
+            size="sm"
             onClick={loadMore}
             disabled={loading}
-            style={{
-              padding: "0.5rem 1rem",
-              fontSize: 14,
-              cursor: loading ? "default" : "pointer",
-            }}
           >
             {loading ? "Loading…" : "Load more"}
-          </button>
+          </Button>
         ) : (
-          <p style={{ fontSize: 12, color: "#999", margin: 0 }}>
-            End of history.
-          </p>
+          <p className="text-xs text-text-muted m-0">End of history.</p>
         )}
         {error ? (
-          <p style={{ fontSize: 12, color: "crimson", marginTop: "0.5rem" }}>
-            {error}
-          </p>
+          <p className="text-xs text-accent mt-2 font-bold">{error}</p>
         ) : null}
       </div>
     </>
@@ -167,61 +156,47 @@ function EventRow(props: {
   palette: readonly string[] | undefined;
 }) {
   const { event: e, palette } = props;
-  const hex = palette?.[e.color] ?? "#cccccc";
+  // Per-pixel color is canvas content (palette data), not chrome — the
+  // hex here paints the swatch from the bot's actual pixel write, so it
+  // bypasses the token system the way the canvas renderer does.
+  const hex = palette?.[e.color];
   const isRedacted = e.comment === "[redacted]";
 
   return (
-    <li
-      style={{
-        display: "flex",
-        gap: "0.5rem",
-        alignItems: "flex-start",
-        fontSize: 14,
-        lineHeight: 1.4,
-      }}
-    >
+    <li className="flex gap-2.5 items-start text-sm leading-snug">
       <span
         title={`color ${e.color} (palette v${e.palette_version})`}
-        style={{
-          display: "inline-block",
-          width: 14,
-          height: 14,
-          marginTop: 3,
-          backgroundColor: hex,
-          border: "1px solid #999",
-          flexShrink: 0,
-        }}
+        className="inline-block w-3.5 h-3.5 mt-1 border-[1.5px] border-border shrink-0"
+        style={hex ? { backgroundColor: hex } : undefined}
         aria-hidden
       />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex-1 min-w-0">
         <div>
-          <code style={{ fontSize: 13 }}>
+          <code className="font-mono text-sm">
             ({e.x}, {e.y})
           </code>{" "}
-          in{" "}
+          <span className="text-text-muted">in</span>{" "}
           <Link
             href={`/sectors/${e.sector_id}`}
-            style={{ fontSize: 13 }}
+            className="text-brand font-bold hover:underline text-sm"
           >
             {e.sector_id}
           </Link>
         </div>
         {e.comment !== null ? (
           <div
-            style={{
-              marginTop: 2,
-              color: isRedacted ? "#999" : "#222",
-              fontStyle: isRedacted ? "italic" : "normal",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
+            className={
+              isRedacted
+                ? "mt-0.5 text-text-muted italic whitespace-pre-wrap break-words"
+                : "mt-0.5 text-text whitespace-pre-wrap break-words"
+            }
           >
-            {isRedacted ? "[redacted]" : `"${e.comment}"`}
+            {isRedacted ? "[redacted]" : `“${e.comment}”`}
           </div>
         ) : null}
         <div
           title={e.accepted_at}
-          style={{ marginTop: 2, fontSize: 12, color: "#888" }}
+          className="mt-0.5 text-xs text-text-muted"
         >
           {formatRelative(e.accepted_at)}
         </div>
@@ -229,4 +204,3 @@ function EventRow(props: {
     </li>
   );
 }
-
