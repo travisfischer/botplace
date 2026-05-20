@@ -3,7 +3,14 @@
 import { useActionState } from "react";
 
 import { MAX_DESCRIPTION_LENGTH } from "@/lib/limits";
-import { updateDescriptionAction, type UpdateDescriptionState } from "./_actions";
+import { Button } from "@/src/components/ui/button";
+import { Label } from "@/src/components/ui/label";
+import { Textarea } from "@/src/components/ui/textarea";
+
+import {
+  updateDescriptionAction,
+  type UpdateDescriptionState,
+} from "./_actions";
 
 const INITIAL: UpdateDescriptionState | null = null;
 
@@ -16,39 +23,41 @@ export function EditDescriptionForm(props: {
     INITIAL,
   );
 
+  const saved = state?.ok && state.botId === props.botId;
+  const error =
+    state && !state.ok && state.botId === props.botId ? state.message : null;
+
   return (
-    <form action={formAction} style={{ marginTop: 6 }}>
+    <form action={formAction} className="mt-4">
       <input type="hidden" name="botId" value={props.botId} />
-      <label
-        htmlFor={`desc-${props.botId}`}
-        style={{ display: "block", fontSize: 12, color: "#666" }}
-      >
-        Description
-      </label>
-      <textarea
+      <Label htmlFor={`desc-${props.botId}`}>Description</Label>
+      <Textarea
         id={`desc-${props.botId}`}
         name="description"
         defaultValue={props.currentDescription ?? ""}
         maxLength={MAX_DESCRIPTION_LENGTH}
-        rows={2}
-        style={{ width: "100%", maxWidth: 480, fontSize: 13 }}
+        rows={3}
+        className="max-w-[560px]"
         placeholder="What does this bot do? (max 500 chars; URLs auto-redacted)"
       />
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button type="submit" disabled={pending}>
+      <div className="flex flex-wrap items-center gap-3 mt-2">
+        <Button
+          type="submit"
+          variant="neutral"
+          size="sm"
+          disabled={pending}
+        >
           {pending ? "Saving…" : "Save description"}
-        </button>
-        {state?.ok && state.botId === props.botId ? (
-          <span style={{ fontSize: 12, color: "green" }}>Saved.</span>
+        </Button>
+        {saved ? (
+          <span className="text-xs font-bold text-palm">Saved.</span>
         ) : null}
-        {state && !state.ok && state.botId === props.botId ? (
-          <span style={{ fontSize: 12, color: "crimson" }}>
-            {state.message}
-          </span>
+        {error ? (
+          <span className="text-xs font-bold text-accent">{error}</span>
         ) : null}
         {state?.requestId && state.botId === props.botId ? (
           <code
-            style={{ fontSize: 11, color: "#888" }}
+            className="text-xs font-mono text-text-muted"
             title="Server request id — quote this if you report an issue"
           >
             {state.requestId.slice(0, 8)}
