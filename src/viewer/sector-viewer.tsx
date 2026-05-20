@@ -643,7 +643,11 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
           />
         )}
       {!healthy && (
-        <div role="status" aria-live="polite" style={stalePillStyle}>
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none bg-surface text-text border-[1.5px] border-border shadow-flat-sm px-3 py-1 text-xs font-bold uppercase tracking-[0.08em]"
+        >
           Reconnecting…
         </div>
       )}
@@ -671,17 +675,3 @@ export function SectorViewer({ meta, staticSnapshotUrl }: SectorViewerProps) {
   );
 }
 
-const stalePillStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 12,
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "6px 14px",
-  borderRadius: 999,
-  background: "rgba(85, 65, 95, 0.92)",
-  color: "#dcf5ff",
-  fontSize: 12,
-  fontFamily: "system-ui, -apple-system, sans-serif",
-  pointerEvents: "none",
-  zIndex: 10,
-};

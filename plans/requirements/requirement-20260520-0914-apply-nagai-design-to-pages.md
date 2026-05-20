@@ -2,7 +2,8 @@
 date: 2026-05-20
 type: feat
 topic: apply-nagai-design-to-pages
-status: ready
+status: shipped
+shipped: 2026-05-20
 planning_depth: comprehensive
 ---
 
