@@ -1,10 +1,27 @@
 import type { Metadata } from "next";
+import { AtmospherePanel } from "@/src/components/atmosphere-panel";
+import { Footer } from "@/src/components/footer";
 import { Mark } from "@/src/components/mark";
-import { Wordmark } from "@/src/components/wordmark";
 import { ThemeToggle } from "@/src/components/theme-toggle";
+import { TopNav } from "@/src/components/top-nav";
+import { Wordmark } from "@/src/components/wordmark";
 import { Button } from "@/src/components/ui/button";
 import { Card } from "@/src/components/ui/card";
+import { DataList, DataListItem } from "@/src/components/ui/data-list";
+import { FormRow } from "@/src/components/ui/form-row";
+import { Input } from "@/src/components/ui/input";
+import { Label } from "@/src/components/ui/label";
 import { Pill } from "@/src/components/ui/pill";
+import { Separator } from "@/src/components/ui/separator";
+import {
+  Table,
+  TBody,
+  Td,
+  Th,
+  THead,
+  Tr,
+} from "@/src/components/ui/table";
+import { Textarea } from "@/src/components/ui/textarea";
 
 export const metadata: Metadata = {
   title: "Style guide · Botplace",
@@ -57,19 +74,6 @@ function Swatch({
     </div>
   );
 }
-
-/* ----- Atmosphere fragments (hexes are atmosphere-spec, not styling) ----- */
-
-const DAYTIME_SKY: React.CSSProperties = {
-  background: `linear-gradient(to bottom,
-    #1F5FA8 0 18%, #2D7DD2 18% 36%, #4A97D8 36% 52%,
-    #79B8E0 52% 66%, #B3D9EC 66% 80%, #E7F1F2 80% 100%)`,
-};
-const SUNSET_SKY: React.CSSProperties = {
-  background: `linear-gradient(to bottom,
-    #3A4E8C 0 20%, #8B4E8E 20% 40%, #C2477E 40% 58%,
-    #EE6C4D 58% 76%, #F4A06A 76% 90%, #F2C14E 90% 100%)`,
-};
 
 /* ----- Canvas drawing palettes (spec, not styling) ----- */
 
@@ -349,32 +353,218 @@ export default function StyleguidePage() {
           </p>
         </Section>
 
+        {/* ============ SHARED CHROME · TOP NAV ============ */}
+
+        <Section label="Shared chrome · top nav (4 variants)">
+          <p className="text-sm text-text-muted mb-4 max-w-[70ch]">
+            <code className="font-mono">&lt;TopNav variant=&quot;…&quot; /&gt;</code>{" "}
+            renders the same chrome across every page. Theme-aware — there
+            is no &quot;always dark&quot; cockpit mode.
+          </p>
+
+          <div className="text-xs uppercase tracking-[0.12em] text-text-muted font-bold mb-1.5">
+            variant=&quot;viewer&quot; (signed in)
+          </div>
+          <div className="border-[1.5px] border-border mb-4 overflow-hidden">
+            <TopNav variant="viewer" signedIn contextSlot={<Pill>Sector 1</Pill>} />
+          </div>
+
+          <div className="text-xs uppercase tracking-[0.12em] text-text-muted font-bold mb-1.5">
+            variant=&quot;viewer&quot; (signed out)
+          </div>
+          <div className="border-[1.5px] border-border mb-4 overflow-hidden">
+            <TopNav variant="viewer" />
+          </div>
+
+          <div className="text-xs uppercase tracking-[0.12em] text-text-muted font-bold mb-1.5">
+            variant=&quot;docs&quot; (build tabs)
+          </div>
+          <div className="border-[1.5px] border-border mb-4 overflow-hidden">
+            <TopNav
+              variant="docs"
+              docsPages={[
+                { slug: "quickstart", title: "Quickstart" },
+                { slug: "api", title: "API" },
+                { slug: "key-handling", title: "Keys" },
+                { slug: "patterns", title: "Patterns" },
+              ]}
+            />
+          </div>
+
+          <div className="text-xs uppercase tracking-[0.12em] text-text-muted font-bold mb-1.5">
+            variant=&quot;owner&quot; (account / bots, includes sign-out form)
+          </div>
+          <div className="border-[1.5px] border-border mb-4 overflow-hidden">
+            <TopNav variant="owner" />
+          </div>
+
+          <div className="text-xs uppercase tracking-[0.12em] text-text-muted font-bold mb-1.5">
+            variant=&quot;minimal&quot; (auth pages — wordmark + theme toggle only)
+          </div>
+          <div className="border-[1.5px] border-border overflow-hidden">
+            <TopNav variant="minimal" />
+          </div>
+        </Section>
+
+        {/* ============ SHARED CHROME · PAGE SHELL ============ */}
+
+        <Section label="Shared chrome · page shell (3 variants)">
+          <p className="text-sm text-text-muted mb-4 max-w-[70ch]">
+            <code className="font-mono">&lt;PageShell variant=&quot;…&quot; topNav={`{…}`}&gt;</code>{" "}
+            wraps a page with consistent padding, max-width, and footer.
+          </p>
+          <Card>
+            <DataList>
+              <DataListItem label="narrow">
+                ~720px max-width, vertical column, footer at bottom. Used by
+                auth, public bot profile, docs, palette.
+              </DataListItem>
+              <DataListItem label="wide">
+                ~1080px max-width, vertical column, footer at bottom. Used by
+                account and owner control.
+              </DataListItem>
+              <DataListItem label="bleed">
+                Full <code className="font-mono">100dvh</code>, no max-width,
+                no footer. Used by viewer pages where the canvas owns the
+                screen.
+              </DataListItem>
+            </DataList>
+          </Card>
+        </Section>
+
+        {/* ============ SHARED CHROME · FORM PRIMITIVES ============ */}
+
+        <Section label="Shared chrome · form primitives">
+          <p className="text-sm text-text-muted mb-4 max-w-[70ch]">
+            <code className="font-mono">Input</code>,{" "}
+            <code className="font-mono">Label</code>,{" "}
+            <code className="font-mono">Textarea</code>,{" "}
+            <code className="font-mono">FormRow</code>, and{" "}
+            <code className="font-mono">SubmitButton</code>. Focus state
+            uses the flat-shadow rule (subtle small flat shadow on focus,
+            no glow).
+          </p>
+          <Card className="max-w-[520px]">
+            <FormRow>
+              <Label htmlFor="sg-display-name">Display name</Label>
+              <Input
+                id="sg-display-name"
+                placeholder="Conway"
+                defaultValue="Conway"
+              />
+            </FormRow>
+            <FormRow>
+              <Label htmlFor="sg-handle">Handle</Label>
+              <Input
+                id="sg-handle"
+                placeholder="conway"
+                defaultValue="conway"
+              />
+            </FormRow>
+            <FormRow>
+              <Label htmlFor="sg-desc">Description</Label>
+              <Textarea
+                id="sg-desc"
+                rows={3}
+                placeholder="What does your bot paint?"
+                defaultValue="Runs Conway's Game of Life one step at a time, then paints the live cells onto the canvas."
+              />
+            </FormRow>
+            <FormRow>
+              <Button variant="primary">Save</Button>
+            </FormRow>
+          </Card>
+        </Section>
+
+        {/* ============ SHARED CHROME · DATA LIST ============ */}
+
+        <Section label="Shared chrome · data list">
+          <Card className="max-w-[520px]">
+            <DataList>
+              <DataListItem label="Email">travis@hoop.app</DataListItem>
+              <DataListItem label="Provider">Google</DataListItem>
+              <DataListItem label="Joined">May 7, 2026</DataListItem>
+              <DataListItem label="Tier">
+                <Pill variant="success">Power</Pill>
+              </DataListItem>
+            </DataList>
+          </Card>
+        </Section>
+
+        {/* ============ SHARED CHROME · TABLE ============ */}
+
+        <Section label="Shared chrome · table">
+          <Table>
+            <THead>
+              <Tr>
+                <Th>Prefix</Th>
+                <Th>Status</Th>
+                <Th>Last used</Th>
+                <Th className="text-right">Action</Th>
+              </Tr>
+            </THead>
+            <TBody>
+              <Tr>
+                <Td className="font-mono">bp_live_a1b2c3…</Td>
+                <Td>
+                  <Pill variant="success">Active</Pill>
+                </Td>
+                <Td className="text-text-muted">3 min ago</Td>
+                <Td className="text-right">
+                  <Button variant="ghost" size="sm">
+                    Revoke
+                  </Button>
+                </Td>
+              </Tr>
+              <Tr>
+                <Td className="font-mono">bp_live_d4e5f6…</Td>
+                <Td>
+                  <Pill>Revoked</Pill>
+                </Td>
+                <Td className="text-text-muted">2 days ago</Td>
+                <Td className="text-right">—</Td>
+              </Tr>
+            </TBody>
+          </Table>
+        </Section>
+
+        {/* ============ SHARED CHROME · SEPARATOR + FOOTER ============ */}
+
+        <Section label="Shared chrome · separator + footer">
+          <Card>
+            <p>Content above the separator.</p>
+            <Separator />
+            <p>Content below the separator.</p>
+          </Card>
+          <div className="text-xs uppercase tracking-[0.12em] text-text-muted font-bold mt-6 mb-2">
+            Global footer (rendered automatically by PageShell on
+            narrow/wide variants)
+          </div>
+          <div className="border-[1.5px] border-border overflow-hidden">
+            <Footer />
+          </div>
+        </Section>
+
         {/* ============ ATMOSPHERE · DAYTIME ============ */}
 
         <Section label="Atmosphere layer · banded gradient sky (daytime register)">
-          <div
-            className="h-[200px] border-[1.5px] border-border relative overflow-hidden"
-            style={DAYTIME_SKY}
-          >
-            <div
-              className="absolute right-12 top-10 w-14 h-14 rounded-full"
-              style={{ background: "#F2C14E", border: "1.5px solid #d9a93f" }}
-            />
-          </div>
+          <AtmospherePanel
+            register="daytime"
+            withSun
+            className="h-[200px]"
+          />
           <p className="text-sm text-text-muted mt-2 max-w-[70ch]">
-            Gradients are <strong>banded</strong> — discrete hard-edged
-            steps, not smooth blends. Lives in heroes / loading screens /
-            empty states, never on buttons.
+            <code className="font-mono">&lt;AtmospherePanel register=&quot;daytime&quot; /&gt;</code>{" "}
+            — gradients are <strong>banded</strong> (discrete hard-edged
+            steps, never smooth blends). Lives in heroes / loading screens
+            / empty states, never on buttons.
           </p>
         </Section>
 
         {/* ============ ATMOSPHERE · SUNSET ============ */}
 
         <Section label="Atmosphere layer · sunset register (dark-mode source)">
-          <div
-            className="h-[120px] border-[1.5px] border-border"
-            style={SUNSET_SKY}
-          />
+          <AtmospherePanel register="sunset" className="h-[200px]" />
           <p className="text-sm text-text-muted mt-2 max-w-[70ch]">
             Nagai&apos;s evening palette: indigo → magenta → coral → peach →
             gold. The source for dark-mode chrome — toggle Dusk mode at the
