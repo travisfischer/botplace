@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- Botplace mark: Nagai banded sunset + sun disc. Bands at non-uniform
+       heights compressing toward the horizon (the actual Nagai signature).
+       Hex literals here are the mark's identity spec, not a styling decision.
+       Auto-discovered by Next.js as the site favicon. -->
+  <rect x="0" y="0"     width="16" height="3.2"  fill="#3A4E8C"/>
+  <rect x="0" y="3.2"   width="16" height="3.2"  fill="#8B4E8E"/>
+  <rect x="0" y="6.4"   width="16" height="2.88" fill="#C2477E"/>
+  <rect x="0" y="9.28"  width="16" height="2.88" fill="#EE6C4D"/>
+  <rect x="0" y="12.16" width="16" height="2.24" fill="#F4A06A"/>
+  <rect x="0" y="14.4"  width="16" height="1.6"  fill="#F2C14E"/>
+  <circle cx="10.4" cy="10.4" r="2.4" fill="#F4D662"/>
+</svg>

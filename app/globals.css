@@ -1,0 +1,135 @@
+/* ============================================================================
+   Botplace — Nagai design system
+   See: plans/requirements/requirement-20260519-1500-nagai-design-system.md
+
+   Token discipline: every color/typography decision in the app derives from
+   variables in this file. Hex literals live here and (intentionally) in
+   app/icon.svg. Anywhere else is a regression.
+============================================================================ */
+
+@import "tailwindcss";
+
+/* Ensure Tailwind scans src/ for utility usage. App router auto-discovers
+   /app; /src is our convention for non-route source. */
+@source "../src/**/*.{ts,tsx}";
+
+/* ----------------------------------------------------------------------------
+   Token roles → Tailwind theme namespace.
+   Values reference CSS variables (defined below in :root and .dark) so the
+   `.dark` class on <html> swaps every utility without a rebuild.
+---------------------------------------------------------------------------- */
+@theme {
+  /* Colors — semantic role names, never literal color names */
+  --color-bg:                 var(--bg);
+  --color-surface:            var(--surface);
+  --color-text:               var(--text);
+  --color-text-muted:         var(--text-muted);
+  --color-border:             var(--border);
+  --color-shadow:             var(--shadow);
+
+  --color-brand:              var(--brand);
+  --color-brand-foreground:   var(--brand-foreground);
+  --color-accent:             var(--accent);
+  --color-accent-foreground:  var(--accent-foreground);
+  --color-pool:               var(--pool);
+  --color-pool-foreground:    var(--pool-foreground);
+  --color-palm:               var(--palm);
+  --color-palm-foreground:    var(--palm-foreground);
+  --color-sun:                var(--sun);
+  --color-sun-foreground:     var(--sun-foreground);
+
+  /* Fonts — wired from next/font in app/layout.tsx */
+  --font-display:  var(--font-hanken),    system-ui, sans-serif;
+  --font-body:     var(--font-hanken),    system-ui, sans-serif;
+  --font-mono:     var(--font-jetbrains), ui-monospace, monospace;
+  --font-wordmark: var(--font-silkscreen), monospace;
+}
+
+/* ----------------------------------------------------------------------------
+   Light theme (default) — Nagai daytime register
+---------------------------------------------------------------------------- */
+:root {
+  --bg:                 #FBF4E6;
+  --surface:            #FFFCF4;
+  --text:               #2B2A24;
+  --text-muted:         #6E6A5C;
+  --border:             #2B2A24;
+  --shadow:             #B7B2C8;
+
+  --brand:              #2D7DD2;
+  --brand-foreground:   #FFFFFF;
+  --accent:             #EE6C4D;
+  --accent-foreground:  #FFFFFF;
+  --pool:               #2BA3AE;
+  --pool-foreground:    #FFFFFF;
+  --palm:               #4C9A6A;
+  --palm-foreground:    #FFFFFF;
+  --sun:                #F2C14E;
+  --sun-foreground:     #2B2A24;  /* dark text on yellow */
+}
+
+/* ----------------------------------------------------------------------------
+   Dark theme — Nagai sunset/night register
+---------------------------------------------------------------------------- */
+.dark {
+  --bg:                 #1B1730;
+  --surface:            #261F3C;
+  --text:               #F3EBDC;
+  --text-muted:         #9C8FA8;
+  --border:             #463E5E;
+  --shadow:             #0E0A1C;
+
+  --brand:              #5BA3E4;
+  --brand-foreground:   #FFFFFF;
+  --accent:             #F2784F;
+  --accent-foreground:  #FFFFFF;
+  --pool:               #36B3BE;
+  --pool-foreground:    #FFFFFF;
+  --palm:               #5BB07C;
+  --palm-foreground:    #FFFFFF;
+  --sun:                #F4C75E;
+  --sun-foreground:     #2B2A24;
+}
+
+/* ----------------------------------------------------------------------------
+   Base styles
+---------------------------------------------------------------------------- */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Themed selection — coral highlight (accent doing one of its "look here"
+     jobs). White text on accent in both modes. */
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Flat-shadow elevation — the system's ONE elevation primitive.
+   Nagai's painted wall-shadows: flat, hard-edged, offset blocks of color.
+   Never a blurred drop shadow. Anywhere.
+---------------------------------------------------------------------------- */
+@utility shadow-flat {
+  box-shadow: 6px 6px 0 var(--color-shadow);
+}
+@utility shadow-flat-sm {
+  box-shadow: 4px 4px 0 var(--color-shadow);
+}
+@utility shadow-flat-lg {
+  box-shadow: 8px 8px 0 var(--color-shadow);
+}
