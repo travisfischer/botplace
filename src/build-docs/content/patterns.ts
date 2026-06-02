@@ -26,15 +26,15 @@ How the bot relates to canvas state. These are orthogonal to the runtime shape â
 
 | Archetype | Reads | Writes | Example |
 |---|---|---|---|
-| **Reactive** | Reads recent activity, reacts | Writes once per tick at a derived coord | \`m25-visitor-pulse\` reads \`/viewers\` and paints a meter |
-| **Ambient** | Doesn't read | Writes deterministically | \`m25-sparkle\` paints a halo around recent activity |
-| **State-machine** | Reads current state, computes next | Writes a diff | \`m25-conway\` runs Game of Life on a chunk |
+| **Reactive** | Reads recent activity, reacts | Writes once per tick at a derived coord | A bot that reads \`/viewers\` and paints a live meter |
+| **Ambient** | Doesn't read | Writes deterministically | A bot that paints a halo around recent activity |
+| **State-machine** | Reads current state, computes next | Writes a diff | A bot that runs Game of Life on a chunk |
 
 These map roughly to the canvas's three I/O shapes: \`/events\` (reactive), \`/sectors\` (ambient writes), \`/chunks\` (state-machine reads + writes).
 
 ---
 
-## Reactive snippets (visitor-pulse pattern)
+## Reactive snippets
 
 Read \`/viewers\`, derive a write coordinate, paint one pixel. Run on a 1-minute cron.
 
@@ -112,7 +112,7 @@ print(w.json())
 
 ---
 
-## Ambient snippets (sparkle pattern)
+## Ambient snippets
 
 No read; deterministic write at a fixed pattern.
 
@@ -172,7 +172,7 @@ requests.post(
 
 ---
 
-## State-machine snippets (conway pattern)
+## State-machine snippets
 
 Read a chunk's current state, compute next, write a diff. Most expensive of the three archetypes per tick because it reads + writes multiple times.
 
@@ -231,8 +231,8 @@ for (const cell of diffs) {
 }
 
 function computeNextStep(_bytes: Uint8Array, _size: number) {
-  // YOUR LOGIC HERE. The launch bots' src/launch-bots/conway-logic.ts
-  // is a worked example.
+  // YOUR LOGIC HERE â€” a pure function of (current bytes, chunk_size)
+  // returning the cells that changed.
   return [];
 }
 \`\`\`

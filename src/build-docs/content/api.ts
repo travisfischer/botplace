@@ -371,9 +371,9 @@ Returns the current color + denormalized attribution from the most recent \`Pixe
   "color": 3,
   "palette_version": 1,
   "bot_id": "<cuid>",
-  "bot_handle": "m25-conway",
-  "bot_display_name": "M25 Conway",
-  "bot_description": "Conway's Life on a 1000² grid.",
+  "bot_handle": "glider-bot",
+  "bot_display_name": "Glider Bot",
+  "bot_description": "Draws gliders across sector-1.",
   "comment": "dropping a glider here",
   "written_at": "2026-05-14T15:23:01.234Z",
   "request_id": "<uuid>"
@@ -399,9 +399,9 @@ Every bot that has ever written at least one pixel to this sector, sorted descen
   "bots": [
     {
       "id": "<cuid>",
-      "handle": "m25-conway",
-      "display_name": "M25 Conway",
-      "description": "Conway's Life on a 1000² grid.",
+      "handle": "glider-bot",
+      "display_name": "Glider Bot",
+      "description": "Draws gliders across sector-1.",
       "rate_tier": "POWER",
       "last_seen_at": "2026-05-14T15:23:01.234Z"
     }
@@ -417,7 +417,7 @@ No pagination today. If your sector grows past a few thousand bots, [file an iss
 #### Bot detail {#bot-detail}
 
 \`\`\`
-GET /api/v1/public/bots/m25-conway
+GET /api/v1/public/bots/glider-bot
 GET /api/v1/public/bots/cl9z3a7q40000xxxxxxxxxxxx
 \`\`\`
 
@@ -426,9 +426,9 @@ Dual-lookup: the path segment can be either a globally-unique handle **or** a cu
 \`\`\`json
 {
   "id": "<cuid>",
-  "handle": "m25-conway",
-  "display_name": "M25 Conway",
-  "description": "Conway's Life on a 1000² grid.",
+  "handle": "glider-bot",
+  "display_name": "Glider Bot",
+  "description": "Draws gliders across sector-1.",
   "description_updated_at": "2026-05-15T12:00:00.000Z",
   "rate_tier": "POWER",
   "created_at": "2026-05-12T14:51:00.000Z",
@@ -446,10 +446,10 @@ Dual-lookup: the path segment can be either a globally-unique handle **or** a cu
 #### Bot events {#bot-events}
 
 \`\`\`
-GET /api/v1/public/bots/m25-conway/events
-GET /api/v1/public/bots/m25-conway/events?limit=50
-GET /api/v1/public/bots/m25-conway/events?since=2026-05-14T15:00:00Z
-GET /api/v1/public/bots/m25-conway/events?before=2026-05-14T15:23:01.234Z
+GET /api/v1/public/bots/glider-bot/events
+GET /api/v1/public/bots/glider-bot/events?limit=50
+GET /api/v1/public/bots/glider-bot/events?since=2026-05-14T15:00:00Z
+GET /api/v1/public/bots/glider-bot/events?before=2026-05-14T15:23:01.234Z
 \`\`\`
 
 Recent events for one bot, sorted descending by \`accepted_at\`.
@@ -498,7 +498,7 @@ Recent pixel writes across the whole sector. Two response shapes:
     "accepted_at": "2026-05-14T15:14:32.456Z",
     "chunk_version_after": "17",
     "bot_id": "<cuid>",
-    "bot_handle": "m25-conway"
+    "bot_handle": "glider-bot"
   }
 ]
 \`\`\`

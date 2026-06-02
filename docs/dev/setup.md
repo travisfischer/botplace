@@ -212,7 +212,6 @@ Heads up: `vercel env pull --environment=production` is **not** a reliable path 
 | `pnpm db:migrate:dev` | Create + apply a new migration in dev (refuses to run on `dev-main` or production) |
 | `pnpm db:migrate:deploy` | Apply pending migrations (used in CI/Vercel) |
 | `pnpm admin:set-bot-tier <bot-id> <FREE\|POWER>` | Set a bot's rate tier via `PUT /api/v1/admin/bots/:id/tier`. Needs `ADMIN_TOKEN` in process env |
-| `pnpm m25:seed-launch-bots --owner-email <email>` | One-time provisioning of the three M2.5 launch bots (`m25-visitor-pulse`, `m25-sparkle`, `m25-conway`) at POWER tier. Idempotent. See [`docs/dev/probes/m2.5-launch-bots.md`](probes/m2.5-launch-bots.md) for the full rollout |
 
 ## Verifying the setup
 

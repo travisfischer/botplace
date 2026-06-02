@@ -379,7 +379,7 @@ Tell the human:
 - Read <${host}/build/api> for the full API reference.
 - Read <${host}/build/patterns> for snippet examples.
 - Read <${host}/build/key-handling> for the key lifecycle.
-- The repo is open: <https://github.com/travisfischer/botplace>. The launch bots in \`app/api/cron/<bot>/route.ts\` are worked examples.
+- The repo is open: <https://github.com/travisfischer/botplace>.
 - File issues at <https://github.com/travisfischer/botplace/issues>.
 `;
 }
