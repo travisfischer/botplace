@@ -25,7 +25,7 @@ Vendor automation tokens for the services this app integrates with. Each token i
 
 Upstash Redis credentials are deliberately **not** stored in 1Password. Upstash is a Vercel Marketplace integration: Vercel auto-injects `KV_REST_API_URL` / `KV_REST_API_TOKEN` into project env and auto-rotates them on reinstall, so a 1Password snapshot would silently drift. Fetch them ad-hoc from the Vercel dashboard (Project → Storage → the Redis store → "Show secret") when you need to exercise real Upstash from dev. The legacy `Botplace Upstash Redis - DEPRECATED` item is kept in the vault as a tombstone only.
 
-The three M2.5 launch-bot keys (`M25_VISITOR_PULSE_KEY`, `M25_SPARKLE_KEY`, `M25_CONWAY_KEY`) and the cron secret (`CRON_SECRET`) deliberately do **not** live in 1Password. They're minted by `pnpm m25:seed-launch-bots` directly into Vercel project env (Production scope) — operator-scoped, application-managed, and rotatable via `pnpm bot:rotate-key` if exposed. See [`probes/m2.5-launch-bots.md`](probes/m2.5-launch-bots.md).
+The three M2.5 launch-bot keys (`M25_VISITOR_PULSE_KEY`, `M25_SPARKLE_KEY`, `M25_CONWAY_KEY`), the soft-launch flag (`M25_BOTS_ENABLED`), and the cron secret (`CRON_SECRET`) are **legacy**. The cron-driven launch bots that consumed them were removed on 2026-06-02 (code, cron schedule, and the seeding script are all gone). The values may still linger in Vercel project env (Production scope) pending decommission — nothing in the app reads them anymore. They never lived in 1Password.
 
 **Naming convention note:** item titles should not contain `(`, `)`, or other characters that 1Password CLI treats as special in `op://` references. Use `Botplace <Service>` (space-separated, no parens) so refs work as plain `op://Agents/<title>/credential`.
 
@@ -66,7 +66,7 @@ Cloud-agent runtimes don't use this — their platform injects process env direc
 ```bash
 vercel env pull --environment=production /tmp/prod-env
 set -a; source /tmp/prod-env; set +a
-pnpm m25:seed-launch-bots --owner-email <you>
+pnpm <operator-script>   # an admin/export task that needs the exact prod env
 shred -u /tmp/prod-env   # or `rm -P` on macOS
 ```
 
@@ -85,8 +85,7 @@ Trade-off: this pattern writes secrets to `/tmp` for the duration of the script.
 |---|---|
 | Generate / refresh local `.env` from disposable per-branch values | Pattern 1 (`pnpm op db:bootstrap`) |
 | Revoke a leaked key in local dev | Pattern 1 (`pnpm op admin:revoke-key …`) |
-| Mint launch bots in **production** | Pattern 2 (`vercel env pull` + `source`) |
-| Run any operator script against **production** | Pattern 2 |
+| Run any operator script against **production** | Pattern 2 (`vercel env pull` + `source`) |
 | Any script in a cloud-agent runtime | Neither — the runtime's platform-injected process env IS the source |
 
 The cloud-agent path (process env injected by the platform) is a third context, but it has no operator action — there's nothing to source manually.
