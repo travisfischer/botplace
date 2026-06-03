@@ -53,6 +53,10 @@ enum AuditActorKind {
   // (POST /api/v1/bots, key mint/rotate/revoke). Added so the audit
   // trail can distinguish "owner did it" from "operator did it".
   OWNER
+  // Action authorized by an admin account (Owner.isAdmin) and run via
+  // an operator CLI — e.g. the sector reset commands. The acting admin
+  // owner is recorded in `payload_json`.
+  ADMIN_ACCOUNT
 }
 
 model Owner {
@@ -60,10 +64,16 @@ model Owner {
   googleSub            String                     @unique @map("google_sub") // Google OAuth `sub`
   email                String // PII
   displayName          String                     @map("display_name") // PII
+  // Marks an operator/admin account. Gates operator capabilities (today:
+  // the sector-reset CLIs verify the acting `--actor` owner has this set;
+  // groundwork for a future admin dashboard). Granted via `pnpm admin:grant`.
+  isAdmin              Boolean                    @default(false) @map("is_admin")
   createdAt            DateTime                   @default(now()) @map("created_at")
   bots                 Bot[]
   personalAccessTokens OwnerPersonalAccessToken[]
 
+  // Serves the `admin:list-admins` lookup (WHERE is_admin = true).
+  @@index([isAdmin])
   @@map("owners")
 }
 
