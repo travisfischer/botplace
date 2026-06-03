@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { confirmRetype, flagValue, makeClient, requireAdminActor, writeAudit } from "./_common.mjs";
+import { confirmRetype, dbTargetLabel, flagValue, makeClient, requireAdminActor, writeAudit } from "./_common.mjs";
 
 // Default delete batch size. At ~1.67M prod rows this keeps each
 // statement bounded; override via --batch-size for tuning.
@@ -117,7 +117,7 @@ async function main() {
   const client = makeClient(process.env.DATABASE_URL);
   await client.connect();
   try {
-    const branch = process.env.NEON_BRANCH_NAME ?? "(unknown)";
+    const target = dbTargetLabel(process.env.DATABASE_URL);
     const counts = await client.query(
       `SELECT (SELECT count(*)::int FROM pixel_events WHERE sector_id = $1) AS events,
               (SELECT count(*)::int FROM sector_chunks WHERE sector_id = $1) AS chunks`,
@@ -125,7 +125,7 @@ async function main() {
     );
     const { events, chunks } = counts.rows[0];
     console.error(
-      `\n⚠️  PERMANENTLY resetting pixels for sector "${sectorId}" on branch "${branch}":\n` +
+      `\n⚠️  PERMANENTLY resetting pixels for sector "${sectorId}" on ${target}:\n` +
         `    blanking ${chunks} chunks + hard-deleting ${events} pixel_events. This is IRREVERSIBLE.\n`,
     );
     if (!yes && !(await confirmRetype(sectorId))) {

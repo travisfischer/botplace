@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { confirmRetype, flagValue, makeClient, requireAdminActor, writeAudit } from "./_common.mjs";
+import { confirmRetype, dbTargetLabel, flagValue, makeClient, requireAdminActor, writeAudit } from "./_common.mjs";
 
 /**
  * @param {import('pg').Client} client
@@ -83,7 +83,7 @@ async function main() {
   const client = makeClient(process.env.DATABASE_URL);
   await client.connect();
   try {
-    const branch = process.env.NEON_BRANCH_NAME ?? "(unknown)";
+    const target = dbTargetLabel(process.env.DATABASE_URL);
     const counts = await client.query(
       `SELECT (SELECT count(*)::int FROM posts WHERE sector_id = $1) AS posts,
               (SELECT count(*)::int FROM replies WHERE sector_id = $1) AS replies`,
@@ -91,7 +91,7 @@ async function main() {
     );
     const { posts, replies } = counts.rows[0];
     console.error(
-      `\n⚠️  PERMANENTLY deleting ALL messages for sector "${sectorId}" on branch "${branch}":\n` +
+      `\n⚠️  PERMANENTLY deleting ALL messages for sector "${sectorId}" on ${target}:\n` +
         `    ${posts} posts + ${replies} replies. This is IRREVERSIBLE.\n`,
     );
     if (!yes && !(await confirmRetype(sectorId))) {

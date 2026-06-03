@@ -17,22 +17,46 @@ import { pathToFileURL } from "node:url";
 import { flagValue, makeClient, resolveOwner, writeAudit } from "./_common.mjs";
 
 /**
+ * Best-effort resolve of the operator who ran grant/revoke, for audit
+ * attribution. Not gated (DB access is the real boundary; bootstrap of
+ * the first admin can't require a pre-existing admin). Records whatever
+ * is given; null id if unresolvable.
  * @param {import('pg').Client} client
- * @param {{ ownerId?: string, email?: string, requestId?: string, sourceIp?: string }} [opts]
+ * @param {{ actorOwnerId?: string, actorEmail?: string }} opts
+ */
+async function resolveActor(client, { actorOwnerId, actorEmail }) {
+  if (!actorOwnerId && !actorEmail) return { id: null, email: null };
+  try {
+    const o = await resolveOwner(client, { ownerId: actorOwnerId, email: actorEmail });
+    return { id: o.id, email: o.email };
+  } catch {
+    return { id: null, email: actorEmail ?? null };
+  }
+}
+
+/**
+ * @param {import('pg').Client} client
+ * @param {{ ownerId?: string, email?: string, actorOwnerId?: string, actorEmail?: string, requestId?: string, sourceIp?: string }} [opts]
  */
 export async function grantAdmin(
   client,
-  { ownerId, email, requestId = randomUUID(), sourceIp = "cli" } = {},
+  { ownerId, email, actorOwnerId, actorEmail, requestId = randomUUID(), sourceIp = "cli" } = {},
 ) {
   const owner = await resolveOwner(client, { ownerId, email });
   const alreadyAdmin = owner.isAdmin === true;
   await client.query("UPDATE owners SET is_admin = true WHERE id = $1", [owner.id]);
+  const actor = await resolveActor(client, { actorOwnerId, actorEmail });
   await writeAudit(client, {
     requestId,
     action: "grant_admin",
     actorKind: "SEED_SCRIPT",
     targetId: owner.id,
-    payload: { email: owner.email, already_admin: alreadyAdmin },
+    payload: {
+      email: owner.email,
+      already_admin: alreadyAdmin,
+      actor_owner_id: actor.id,
+      actor_email: actor.email,
+    },
     sourceIp,
   });
   return { ownerId: owner.id, email: owner.email, alreadyAdmin };
@@ -40,21 +64,27 @@ export async function grantAdmin(
 
 /**
  * @param {import('pg').Client} client
- * @param {{ ownerId?: string, email?: string, requestId?: string, sourceIp?: string }} [opts]
+ * @param {{ ownerId?: string, email?: string, actorOwnerId?: string, actorEmail?: string, requestId?: string, sourceIp?: string }} [opts]
  */
 export async function revokeAdmin(
   client,
-  { ownerId, email, requestId = randomUUID(), sourceIp = "cli" } = {},
+  { ownerId, email, actorOwnerId, actorEmail, requestId = randomUUID(), sourceIp = "cli" } = {},
 ) {
   const owner = await resolveOwner(client, { ownerId, email });
   const wasAdmin = owner.isAdmin === true;
   await client.query("UPDATE owners SET is_admin = false WHERE id = $1", [owner.id]);
+  const actor = await resolveActor(client, { actorOwnerId, actorEmail });
   await writeAudit(client, {
     requestId,
     action: "revoke_admin",
     actorKind: "SEED_SCRIPT",
     targetId: owner.id,
-    payload: { email: owner.email, was_admin: wasAdmin },
+    payload: {
+      email: owner.email,
+      was_admin: wasAdmin,
+      actor_owner_id: actor.id,
+      actor_email: actor.email,
+    },
     sourceIp,
   });
   return { ownerId: owner.id, email: owner.email, wasAdmin };
@@ -68,9 +98,12 @@ export async function listAdmins(client) {
 }
 
 const USAGE = `Usage:
-  node scripts/admin/admin-accounts.mjs grant  (--email <e> | --owner-id <id>)
-  node scripts/admin/admin-accounts.mjs revoke (--email <e> | --owner-id <id>)
-  node scripts/admin/admin-accounts.mjs list`;
+  node scripts/admin/admin-accounts.mjs grant  (--email <e> | --owner-id <id>) [--actor <email>]
+  node scripts/admin/admin-accounts.mjs revoke (--email <e> | --owner-id <id>) [--actor <email>]
+  node scripts/admin/admin-accounts.mjs list
+
+  --actor records WHO ran the grant/revoke in the audit row (optional;
+  attribution only — DB access is the trust boundary).`;
 
 async function main() {
   await import("dotenv/config");
@@ -78,6 +111,8 @@ async function main() {
   const sub = args[0];
   const email = flagValue(args, "--email");
   const ownerId = flagValue(args, "--owner-id");
+  const actorEmail = flagValue(args, "--actor");
+  const actorOwnerId = flagValue(args, "--actor-id");
 
   if (!["grant", "revoke", "list"].includes(sub)) {
     console.error(USAGE);
@@ -88,10 +123,10 @@ async function main() {
   await client.connect();
   try {
     if (sub === "grant") {
-      const r = await grantAdmin(client, { email, ownerId });
+      const r = await grantAdmin(client, { email, ownerId, actorEmail, actorOwnerId });
       console.log(JSON.stringify({ granted: true, ...r }, null, 2));
     } else if (sub === "revoke") {
-      const r = await revokeAdmin(client, { email, ownerId });
+      const r = await revokeAdmin(client, { email, ownerId, actorEmail, actorOwnerId });
       console.log(JSON.stringify({ revoked: true, ...r }, null, 2));
     } else {
       const admins = await listAdmins(client);

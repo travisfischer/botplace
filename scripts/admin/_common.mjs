@@ -5,6 +5,15 @@
 // connection + SSL convention in scripts/dev/seed-bot.mjs. Functions
 // take an injected `pg` client so they're unit-testable against a dev
 // branch (see tests/admin/*).
+//
+// Deliberate no-HTTP exemption: docs/design/principles.md makes HTTP
+// endpoints the unit of operator capability, but the sector resets are
+// intentionally CLI-and-direct-DB-only — an HTTP surface would widen the
+// blast radius of the most destructive, irreversible operation in the
+// system. This deviation is recorded in
+// plans/requirements/requirement-20260603-1109-admin-sector-reset-clis.md.
+// Note: `--actor` is operator-ASSERTED attribution for the audit trail,
+// not authentication — `DATABASE_URL` access is the real trust boundary.
 
 import { createInterface } from "node:readline/promises";
 
@@ -22,6 +31,9 @@ export function flagValue(args, name) {
  * Interactive guard for destructive CLIs: prompt the operator to retype
  * the sector id. Returns true only on an exact match. The `--yes` flag
  * in the caller skips this entirely.
+ * @param {string} expected
+ * @param {{ input?: import('node:stream').Readable, output?: import('node:stream').Writable }} [opts]
+ * @returns {Promise<boolean>}
  */
 export async function confirmRetype(expected, { input = process.stdin, output = process.stdout } = {}) {
   const rl = createInterface({ input, output });
@@ -35,10 +47,17 @@ export async function confirmRetype(expected, { input = process.stdin, output = 
   }
 }
 
-/** Force sslmode=verify-full to match lib/prisma.ts + seed-bot.mjs. */
+/**
+ * Normalize `sslmode` to `verify-full`, mirroring `normalizeSslMode` in
+ * lib/prisma.ts. An explicit `sslmode=disable` is respected so non-TLS
+ * hosts (CI's postgres:16-alpine, local Docker) work — production /
+ * preview URLs never set `disable`. (The earlier version dropped this
+ * opt-out, which red-failed CI — see tests/admin/common.test.ts.)
+ */
 export function dbUrlWithSsl(rawUrl) {
   try {
     const u = new URL(rawUrl);
+    if (u.searchParams.get("sslmode") === "disable") return u.toString();
     u.searchParams.set("sslmode", "verify-full");
     return u.toString();
   } catch {
@@ -50,6 +69,24 @@ export function dbUrlWithSsl(rawUrl) {
 export function makeClient(rawUrl) {
   if (!rawUrl) throw new Error("DATABASE_URL missing");
   return new Client({ connectionString: dbUrlWithSsl(rawUrl) });
+}
+
+/**
+ * Human label for the DB a destructive CLI is about to mutate, for the
+ * confirmation warning. Prefers NEON_BRANCH_NAME (set on dev branches);
+ * falls back to the DATABASE_URL host — important because in a Pattern-2
+ * PROD shell NEON_BRANCH_NAME is unset, so the branch-name guardrail
+ * would otherwise read "(unknown)".
+ * @param {string|undefined} rawUrl
+ * @param {string|undefined} [branch]
+ */
+export function dbTargetLabel(rawUrl, branch = process.env.NEON_BRANCH_NAME) {
+  if (branch) return `branch "${branch}"`;
+  try {
+    return `host "${new URL(rawUrl).host}"`;
+  } catch {
+    return "(unknown target)";
+  }
 }
 
 export class OwnerLookupError extends Error {

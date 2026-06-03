@@ -184,4 +184,26 @@ d("resetSectorPixels CLI logic", () => {
     );
     expect(Number(chunk.rows[0].version)).toBe(3); // untouched
   });
+
+  it("rejects an unknown sector (after the admin check passes)", async () => {
+    const { ownerId } = await seed({ chunks: 0, events: 0 });
+    await expect(
+      resetSectorPixels(client, {
+        sectorId: `missing-${randomUUID().slice(0, 8)}`,
+        ownerId,
+      }),
+    ).rejects.toMatchObject({ code: "sector_not_found" });
+  });
+
+  it("handles an empty sector — 0/0, audit row still written", async () => {
+    const { sectorId, ownerId } = await seed({ chunks: 0, events: 0 });
+    const requestId = randomUUID();
+    const res = await resetSectorPixels(client, { sectorId, ownerId, requestId });
+    expect(res).toMatchObject({ chunksBlanked: 0, eventsDeleted: 0 });
+    const audit = await client.query(
+      "SELECT action FROM admin_audit_events WHERE request_id = $1",
+      [requestId],
+    );
+    expect(audit.rows).toHaveLength(1);
+  });
 });

@@ -145,4 +145,26 @@ d("resetSectorMessages CLI logic", () => {
     ]);
     expect(p.rows[0].c).toBe(1);
   });
+
+  it("rejects an unknown sector (after the admin check passes)", async () => {
+    const { ownerId } = await seed({ posts: 0, repliesPerPost: 0 });
+    await expect(
+      resetSectorMessages(client, {
+        sectorId: `missing-${randomUUID().slice(0, 8)}`,
+        ownerId,
+      }),
+    ).rejects.toMatchObject({ code: "sector_not_found" });
+  });
+
+  it("handles an empty sector — 0/0 deleted, audit row still written", async () => {
+    const { sectorId, ownerId } = await seed({ posts: 0, repliesPerPost: 0 });
+    const requestId = randomUUID();
+    const res = await resetSectorMessages(client, { sectorId, ownerId, requestId });
+    expect(res).toMatchObject({ postsDeleted: 0, repliesDeleted: 0 });
+    const audit = await client.query(
+      "SELECT action FROM admin_audit_events WHERE request_id = $1",
+      [requestId],
+    );
+    expect(audit.rows).toHaveLength(1);
+  });
 });

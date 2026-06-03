@@ -70,11 +70,23 @@ Also verify via the public API that single-pixel reads return unwritten
 2. **Run during a low-traffic window.** There is no write-fence: the
    live pixel API keeps accepting writes during the reset. A stray write
    is acceptable (the CLI is re-runnable), but quiet traffic minimizes it.
-3. Run the command(s) with `--actor <prod-admin-email>`. For pixels,
+3. **Confirm the target.** The warning line prints the DB target — on a
+   Pattern-2 prod shell `NEON_BRANCH_NAME` is unset, so it prints the
+   DATABASE_URL **host** (e.g. `host "ep-...-pooler.../neondb"`); verify
+   it matches the prod Neon endpoint before typing the sector id.
+4. Run the command(s) with `--actor <prod-admin-email>`. For pixels,
    the batched delete + `VACUUM (ANALYZE) pixel_events` may take a few
-   minutes at prod scale — that's expected. If it's interrupted, just
-   **re-run it** (idempotent/resumable).
-4. Verify with the Phase 1 queries against prod.
+   minutes — note `VACUUM` scans the **whole** `pixel_events` table
+   (~1.6M rows), not just the sector, so size the window accordingly. If
+   interrupted, just **re-run it** (idempotent/resumable).
+5. Verify with the Phase 1 queries against prod, and **confirm the audit
+   row landed**:
+   ```sql
+   SELECT action, payload_json FROM admin_audit_events
+    WHERE action LIKE 'reset_sector_%' ORDER BY created_at DESC LIMIT 1;
+   -- Detect any write that slipped in during the reset (re-run if so):
+   SELECT count(*) FROM pixel_events WHERE sector_id = 'sector-1';  -- expect 0
+   ```
 
 ## Notes / caveats
 
@@ -88,3 +100,17 @@ Also verify via the public API that single-pixel reads return unwritten
   be reproducible from events. Treat a reset sector as a clean baseline.
 - **No UI/API.** These capabilities are intentionally CLI-only; there is
   no admin HTTP endpoint or dashboard surface for them in v1.
+- **`--actor` is operator-asserted attribution, not authentication.** It
+  only checks the named owner has `is_admin=true` and records them in the
+  audit row — it does NOT prove the person running the CLI is that owner.
+  The real trust boundary is `DATABASE_URL` access.
+- **Audit payloads retain `actor_email` (PII)** for accountability, in an
+  append-only log with no deletion path. The stable join key is
+  `actor_owner_id`; the email is a denormalized convenience.
+- **Interrupted pixel reset = effect without an audit row.** The pixel
+  reset runs in autocommit (so `VACUUM` can follow), and the audit row is
+  written only after the delete loop completes. If a run is killed
+  mid-loop, chunks are already blanked and some events deleted but **no
+  audit row exists** until a completing re-run. Detect a partial state
+  with the `count(*) … WHERE sector_id` query above; always re-run to
+  completion. (Message reset is transactional, so it has no such window.)
