@@ -70,10 +70,15 @@ Also verify via the public API that single-pixel reads return unwritten
 2. **Run during a low-traffic window.** There is no write-fence: the
    live pixel API keeps accepting writes during the reset. A stray write
    is acceptable (the CLI is re-runnable), but quiet traffic minimizes it.
-3. **Confirm the target.** The warning line prints the DB target — on a
-   Pattern-2 prod shell `NEON_BRANCH_NAME` is unset, so it prints the
-   DATABASE_URL **host** (e.g. `host "ep-...-pooler.../neondb"`); verify
-   it matches the prod Neon endpoint before typing the sector id.
+3. **Confirm the target.** The warning line always prints the
+   DATABASE_URL **host** as the authoritative target (e.g.
+   `host "ep-...-pooler.<region>.aws.neon.tech"`); verify it matches the
+   prod Neon endpoint before typing the sector id. If `NEON_BRANCH_NAME`
+   is set in the shell (it leaks in when `.env` is loaded by
+   `dotenv/config`), it's appended as secondary context —
+   `host "ep-prod-..." (NEON_BRANCH_NAME=dev-xxxx)`. A prod host with a
+   dev-looking branch suffix is the tell that `.env` drifted from the
+   exported prod URL: **trust the host, not the branch.**
 4. Run the command(s) with `--actor <prod-admin-email>`. For pixels,
    the batched delete + `VACUUM (ANALYZE) pixel_events` may take a few
    minutes — note `VACUUM` scans the **whole** `pixel_events` table

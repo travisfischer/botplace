@@ -73,20 +73,29 @@ export function makeClient(rawUrl) {
 
 /**
  * Human label for the DB a destructive CLI is about to mutate, for the
- * confirmation warning. Prefers NEON_BRANCH_NAME (set on dev branches);
- * falls back to the DATABASE_URL host — important because in a Pattern-2
- * PROD shell NEON_BRANCH_NAME is unset, so the branch-name guardrail
- * would otherwise read "(unknown)".
+ * confirmation warning. The host parsed from the live connection string is
+ * the AUTHORITATIVE target and is always shown first — NEON_BRANCH_NAME is a
+ * separate env var that can drift from DATABASE_URL. In a Pattern-2 PROD run
+ * the operator exports a prod DATABASE_URL out-of-band while .env's
+ * NEON_BRANCH_NAME still names a dev branch; preferring the branch name would
+ * make the guardrail lie about the target of an irreversible op (it did, once,
+ * on a real sector-1 reset — see plans/reviews/review-20260603-1533-admin-sector-reset-clis.md).
+ * If NEON_BRANCH_NAME is also set, it's appended as secondary, clearly-labeled
+ * context so a host↔branch mismatch is visible rather than masked.
  * @param {string|undefined} rawUrl
  * @param {string|undefined} [branch]
  */
 export function dbTargetLabel(rawUrl, branch = process.env.NEON_BRANCH_NAME) {
-  if (branch) return `branch "${branch}"`;
+  let host;
   try {
-    return `host "${new URL(rawUrl).host}"`;
+    host = new URL(rawUrl).host;
   } catch {
-    return "(unknown target)";
+    host = undefined;
   }
+  // Never let the branch env stand in as the target: an unparseable URL means
+  // we genuinely don't know the host, and the branch may not reflect it.
+  if (!host) return "(unknown target)";
+  return branch ? `host "${host}" (NEON_BRANCH_NAME=${branch})` : `host "${host}"`;
 }
 
 export class OwnerLookupError extends Error {
