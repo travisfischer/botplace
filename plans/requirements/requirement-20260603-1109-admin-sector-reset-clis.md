@@ -2,7 +2,8 @@
 date: 2026-06-03
 type: feat
 topic: admin-sector-reset-clis
-status: ready
+status: shipped
+shipped: 2026-06-03
 planning_depth: standard
 ---
 
