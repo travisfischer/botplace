@@ -212,6 +212,11 @@ Heads up: `vercel env pull --environment=production` is **not** a reliable path 
 | `pnpm db:migrate:dev` | Create + apply a new migration in dev (refuses to run on `dev-main` or production) |
 | `pnpm db:migrate:deploy` | Apply pending migrations (used in CI/Vercel) |
 | `pnpm admin:set-bot-tier <bot-id> <FREE\|POWER>` | Set a bot's rate tier via `PUT /api/v1/admin/bots/:id/tier`. Needs `ADMIN_TOKEN` in process env |
+| `pnpm admin:grant --email <e>` / `--owner-id <id>` | Mark an owner account as admin (`Owner.isAdmin`). Email is non-unique → on multiple matches it errors and asks for `--owner-id`. Direct-DB; audited |
+| `pnpm admin:revoke-admin --email <e>` / `--owner-id <id>` | Clear an owner's admin flag. Audited |
+| `pnpm admin:list-admins` | List all admin owners (id + email) as JSON. Read-only |
+| `pnpm admin:reset-sector-pixels --sector <id> --actor <email> [--batch-size <n>] [--yes]` | **Destructive, irreversible.** Blank a sector's chunks (zeroed data, version bumped forward) + batched hard-delete of its `pixel_events` + `VACUUM`. `--actor` must be an admin owner. Retype-to-confirm unless `--yes`. Run against prod via Pattern 2 (see [`secrets.md`](secrets.md)). Full runbook: [`probes/admin-sector-reset.md`](probes/admin-sector-reset.md) |
+| `pnpm admin:reset-sector-messages --sector <id> --actor <email> [--yes]` | **Destructive, irreversible.** Hard-delete all posts + replies for a sector (transactional). Same `--actor` + confirm rules as above |
 
 ## Verifying the setup
 
