@@ -2,13 +2,18 @@
 date: 2026-05-19
 type: feature
 topic: nagai-design-system
-status: draft
+status: shipped
+shipped: 2026-05-20
 planning_depth: standard
 ---
 
 # Requirement: Nagai design system (UI tokens + components + style guide)
 
 ## Status
+
+Shipped 2026-05-20 as [botplace#34](https://github.com/travisfischer/botplace/pull/34) (foundation — tokens, mark, `/styleguide`, shadcn primitives at `src/components/ui/`). The follow-on "apply to every existing page" work shipped immediately after as [botplace#35](https://github.com/travisfischer/botplace/pull/35). Status flag was retroactively flipped 2026-06-05; the original ship was not gated on this doc.
+
+## Status (original, at locking time)
 
 Draft. Brainstorm at [`plans/brainstorms/2026-05-19-nagai-design-language.md`](../brainstorms/2026-05-19-nagai-design-language.md) explored the direction (Hiroshi Nagai city-pop work as the anchor) and resolved seven major decisions plus four mid-flight refinements through visual prototyping. The supporting artifacts — [`2026-05-19-nagai-mockup.html`](../brainstorms/2026-05-19-nagai-mockup.html) and [`2026-05-19-nagai-palette-preview.html`](../brainstorms/2026-05-19-nagai-palette-preview.html) — render every locked decision in working HTML/CSS for visual reference; the requirement below is the canonical spec they validate.
 

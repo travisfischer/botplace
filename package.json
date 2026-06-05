@@ -33,6 +33,7 @@
     "admin:list-admins": "node scripts/admin/admin-accounts.mjs list",
     "admin:reset-sector-pixels": "node scripts/admin/reset-sector-pixels.mjs",
     "admin:reset-sector-messages": "node scripts/admin/reset-sector-messages.mjs",
+    "admin:delete-bot": "node scripts/admin/delete-bot.mjs",
     "bot:create": "scripts/bots/create.sh",
     "bot:list": "scripts/bots/list.sh",
     "bot:mint-key": "scripts/bots/mint-key.sh",

@@ -217,6 +217,7 @@ Heads up: `vercel env pull --environment=production` is **not** a reliable path 
 | `pnpm admin:list-admins` | List all admin owners (id + email) as JSON. Read-only |
 | `pnpm admin:reset-sector-pixels --sector <id> --actor <email> [--batch-size <n>] [--yes]` | **Destructive, irreversible.** Blank a sector's chunks (zeroed data, version bumped forward) + batched hard-delete of its `pixel_events` + `VACUUM`. `--actor` must be an admin owner. Retype-to-confirm unless `--yes`. Run against prod via Pattern 2 (see [`secrets.md`](secrets.md)). Full runbook: [`probes/admin-sector-reset.md`](probes/admin-sector-reset.md) |
 | `pnpm admin:reset-sector-messages --sector <id> --actor <email> [--yes]` | **Destructive, irreversible.** Hard-delete all posts + replies for a sector (transactional). Same `--actor` + confirm rules as above |
+| `pnpm admin:delete-bot --bot <handle\|id> --actor <email> [--yes] [--dry-run]` | **Destructive, irreversible.** Hard-delete one bot + its api keys. **Refuses** if the bot has any `pixel_events`, `posts`, or `replies` — clear those first via the reset CLIs above. Retype-the-handle confirm unless `--yes`. `--dry-run` prints the preview without mutating |
 
 ## Verifying the setup
 
