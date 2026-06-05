@@ -62,6 +62,13 @@ require/absent → verify-full, non-URL unchanged). Push re-runs CI green.
   one guardrail the runbook leans on.
   **Resolved:** new `dbTargetLabel` falls back to the DATABASE_URL host;
   runbook adds a "confirm the target" step.
+  **Follow-up (2026-06-03):** the first fix still _preferred_
+  `NEON_BRANCH_NAME` when set, and a real prod `sector-1` reset showed
+  that env leaks in from `.env` via `dotenv/config` — so the warning
+  printed `branch "dev-4f6874ed"` while connected to prod, lying about
+  the target. `dbTargetLabel` now always shows the parsed host as the
+  authoritative label and appends any `NEON_BRANCH_NAME` only as
+  clearly-flagged secondary context (`tests/admin/common.test.ts`).
 - **Interrupted pixel reset = effect without an audit row** (observability).
   Autocommit batched delete writes the audit row only on completion.
   **Resolved (doc):** runbook documents the partial-state window, a
