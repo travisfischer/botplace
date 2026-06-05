@@ -1,10 +1,31 @@
 ---
 date: 2026-06-02
 topic: admin-dashboard-sector-resets
-status: draft
+status: partially-shipped
 ---
 
 # Brainstorm: Admin dashboard + sector resets
+
+> **Status note (2026-06-05).** The v1 slice — `Owner.isAdmin` foundation +
+> CLI-only sector resets — shipped as [botplace#39](https://github.com/travisfischer/botplace/pull/39)
+> on 2026-06-03. The **web admin dashboard** portion explored here is
+> **skipped for now** (no scheduled milestone). The CLI surface is
+> sufficient for current operator needs; revisit if/when there's a
+> concrete driver for a human-facing dashboard (e.g. delegating ops to
+> a non-CLI operator, or migrating the existing `ADMIN_TOKEN` HTTP routes
+> into an account-admin surface).
+>
+> **Brainstorm research findings since validated by prod runs:**
+> - The "1.67M pixel_events, ~92% m25" sizing held. Two runs of
+>   `pnpm admin:reset-sector-pixels --sector sector-1` on 2026-06-04
+>   purged the launch-bot history; prod is now at ~24k events, all
+>   non-launch-bot. The batched/resumable design proved out at prod
+>   scale (no separate background-job machinery needed).
+> - The five legacy launch-bot env vars (`M25_*`, `CRON_SECRET`,
+>   `M25_BOTS_ENABLED`) were removed from Vercel prod project env on
+>   2026-06-05. The three `m25-*` `bots` rows remain (inert: 0 events,
+>   no usable keys) — see follow-up requirement for hard-delete CLI.
+
 
 ## Problem / Opportunity
 
