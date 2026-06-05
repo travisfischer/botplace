@@ -14,37 +14,12 @@ Format per entry:
 
 ## Open
 
-> **Click-to-inspect "see recent activity" link opens raw JSON.** The
-> `PixelInspectBox` button in `src/viewer/pixel-inspect.tsx` opens
-> `/api/v1/public/bots/:handle/events` in a new tab — that's the raw
-> API response, not a polished UI. The M3 requirement says the
-> affordance is "backed by" that endpoint but doesn't specify the
-> presentation. Acceptable for M3 ship since the primary
-> deliverable (attribution at click) is intact, but a follow-up could
-> render the events as a small list inside the inspect box, or route
-> to a public `/bots/<handle>` page that doesn't exist yet.
->
-> **Suggested next step:** either (a) add a small recent-activity
-> table to the inspect box itself (no new page), or (b) build the
-> deferred `GET /api/v1/public/bots/:handle` summary endpoint + a
-> matching `/bots/<handle>` page and link to it.
-
-> **Migrating the M2.5 launch bots in production needs a manual
-> review of the seed-script's idempotency.** The seed script now
-> looks bots up by `handle` (globally unique). For the existing
-> production launch bots — already created at M2.5 with `name =
-> "m25-conway"` etc. — the M3 migration backfilled `handle` from
-> `name`, so the lookup will hit the existing rows and skip with
-> "already provisioned". This is the desired behavior. Verify in
-> staging that no double-provisioning happens before deploying to
-> prod. The probe doc covers this but a fresh operator should be
-> told explicitly.
-
 > **`AdminAuditEvent.actorKind` enum is sized to today's needs.**
-> Three values: `admin_token`, `seed_script`, `owner`. Future actor
-> types (cloud-agent platform, system-cron-self, etc.) will need
-> additive enum migrations. Documented inline; flagging here so the
-> first new actor doesn't accidentally land as `admin_token`.
+> Now four values: `admin_token`, `seed_script`, `owner`, `admin_account`
+> (the last added in #39). Future actor types (cloud-agent platform,
+> system-cron-self, etc.) will need additive enum migrations.
+> Documented inline; flagging here so the first new actor doesn't
+> accidentally land as `admin_token`.
 
 > **Owner-create rate limit on bot create + duplicate-handle
 > retry.** A user racing through "create bot" with a colliding
@@ -56,6 +31,20 @@ Format per entry:
 > validation-only failures). M2.5's per-IP bypass for POWER tier
 > shows the pattern.
 
-## Resolved during implementation
+## Resolved post-M3
 
-(none yet)
+> **Click-to-inspect "see recent activity" link opens raw JSON.**
+> Resolved 2026-05-15 by the bot-profile-page work
+> ([botplace#29](https://github.com/travisfischer/botplace/pull/29) —
+> `requirement-20260515-1635-bot-profile-page.md`). The inspect-box
+> button now opens `/bots/<handle>` (the polished profile page +
+> activity feed) via `onInspectBot` in
+> `src/viewer/sector-viewer.tsx`. No raw JSON in the user path.
+
+> **Migrating the M2.5 launch bots in production needs a manual
+> review of the seed-script's idempotency.** Resolved 2026-06-05
+> (botplace#42). The launch-bot code + seed script were removed in
+> botplace#38, the PixelEvents purged via `admin:reset-sector-pixels`
+> on 2026-06-04, the env vars removed from Vercel prod, and the bot
+> rows hard-deleted via the new `admin:delete-bot` CLI. The
+> idempotency concern is moot — there's nothing left to provision.
